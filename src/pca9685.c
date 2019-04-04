@@ -20,7 +20,6 @@ struct pca9685 *pca9685_new(int addr, float freq)
 {
 	struct pca9685 *pca;
 	int fd;
-	int autoinc;
 
 	pca = malloc(sizeof(*pca));
 	if (pca == NULL)
@@ -158,7 +157,7 @@ int pca9685_pwm_read(struct pca9685 *pca, int pin, int16_t *on, int16_t *off)
 int pca9685_pwm_full_on(struct pca9685 *pca, int pin, int tf)
 {
 	int reg = pca9685_get_base_reg(pin) + 1; /* LEDX_ON_H */
-	int state;
+	int8_t state;
 
 	/* sanity check */
 	if (pca9685_pwm_check(pca) < 0)
@@ -175,7 +174,7 @@ int pca9685_pwm_full_on(struct pca9685 *pca, int pin, int tf)
 
 	/* set full-off to 0 because it has priority over full-on */
 	if (tf) {
-		if (pca9685_pwm_full_off(pca->fd, pin, 0) != pin) {
+		if (pca9685_pwm_full_off(pca, pin, 0) != pin) {
 			return -1;
 		}
 	}
@@ -190,7 +189,7 @@ int pca9685_pwm_full_on(struct pca9685 *pca, int pin, int tf)
 int pca9685_pwm_full_off(struct pca9685 *pca, int pin, int tf)
 {
 	int reg = pca9685_get_base_reg(pin) + 3; /* LEDX_OFF_H */
-	int state;
+	int8_t state;
 
 	/* sanity check */
 	if (pca9685_pwm_check(pca) < 0)
@@ -219,7 +218,7 @@ static int pca9685_get_base_reg(int pin)
 /* pca9685_update_settings: update settings member of pca9685 struct. if tf then calculate states */
 static int pca9685_update_settings(struct pca9685 *pca, int tf)
 {
-	if (i2c_read_reg8(pca->fd, PCA9685_MODE1, &(pca->settings)) < 0)
+	if (i2c_read_reg8(pca->fd, PCA9685_MODE1, (int8_t*) &(pca->settings)) < 0)
 		return -1;
 
 	pca->settings &= 0x7F; /* set restart bit to 0 */

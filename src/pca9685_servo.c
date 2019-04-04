@@ -38,7 +38,7 @@ struct pca9685_servo *pca9685_servo_new(struct pca9685 *pca, int pin, int us_min
 	servo->us_max = us_max;
 	
 	/* initalize the servo */
-	if (servo_write_us(servo, us) != us)
+	if (pca9685_servo_write_us(servo, us) != us)
 		goto error_free_servo;
 
 	return servo;
