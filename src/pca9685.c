@@ -10,7 +10,7 @@
 #include "basic_i2c.h"
 
 /* declare static functions */
-static int pca9685_get_base_reg(int pin);
+static uint8_t pca9685_get_base_reg(int pin);
 static int pca9685_update_settings(struct pca9685 *pca, int tf);
 static int pca9685_pwm_check(struct pca9685 *pca);
 static void pca9685_enable_autoinc(struct pca9685 *pca);
@@ -59,7 +59,7 @@ error_free_pca:
 /* pca9685_pwm_freq: set a frequency for pwm signals */
 int pca9685_pwm_freq(struct pca9685 *pca, float freq)
 {
-	int prescale;
+	uint8_t prescale;
 
 	/* cap frequency at min and max */ 
 	freq = (freq > PCA9685_PWM_MAX ? PCA9685_PWM_MAX : (freq < PCA9685_PWM_MIN ? PCA9685_PWM_MIN : freq));
@@ -68,7 +68,7 @@ int pca9685_pwm_freq(struct pca9685 *pca, float freq)
 	 * prescale = round(osc_clock / (4096 * frequency))) - 1 where osc_clock = 25 MHz
 	 * Further info here: http://www.nxp.com/documents/data_sheet/PCA9685.pdf Page 24
 	 */
-	prescale = (int)(25000000.0f / (PCA9685_PWM_TICK_MAX * freq) - 0.5f);
+	prescale = (uint8_t) (25000000.0f / (PCA9685_PWM_TICK_MAX * freq) - 0.5f);
 
 	/* calculate states */
 	if (pca9685_update_settings(pca, 1) < 0)
@@ -108,9 +108,9 @@ int pca9685_pwm_reset(struct pca9685 *pca)
 }
 
 /* pca9685_pwm_write: write on and off ticks to a pin, disabling any full on or off */
-int pca9685_pwm_write(struct pca9685 *pca, int pin, int on, int off)
+int pca9685_pwm_write(struct pca9685 *pca, int pin, uint16_t on, uint16_t off)
 {
-	int reg = pca9685_get_base_reg(pin);
+	uint8_t reg = pca9685_get_base_reg(pin);
 
 	/* sanity check */
 	if (pca9685_pwm_check(pca) < 0)
@@ -130,9 +130,9 @@ int pca9685_pwm_write(struct pca9685 *pca, int pin, int on, int off)
  * full-on or off bit: mask with 0x1000
  * note: PCA9685_PIN_ALL will always return 0
  */
-int pca9685_pwm_read(struct pca9685 *pca, int pin, int16_t *on, int16_t *off)
+int pca9685_pwm_read(struct pca9685 *pca, int pin, uint16_t *on, uint16_t *off)
 {
-	int reg = pca9685_get_base_reg(pin);
+	uint8_t reg = pca9685_get_base_reg(pin);
 
 	/* sanity check */
 	if (pca9685_pwm_check(pca) < 0)
@@ -156,8 +156,8 @@ int pca9685_pwm_read(struct pca9685 *pca, int pin, int16_t *on, int16_t *off)
  */
 int pca9685_pwm_full_on(struct pca9685 *pca, int pin, int tf)
 {
-	int reg = pca9685_get_base_reg(pin) + 1; /* LEDX_ON_H */
-	int8_t state;
+	uint8_t reg = pca9685_get_base_reg(pin) + 1; /* LEDX_ON_H */
+	uint8_t state;
 
 	/* sanity check */
 	if (pca9685_pwm_check(pca) < 0)
@@ -188,8 +188,8 @@ int pca9685_pwm_full_on(struct pca9685 *pca, int pin, int tf)
  */
 int pca9685_pwm_full_off(struct pca9685 *pca, int pin, int tf)
 {
-	int reg = pca9685_get_base_reg(pin) + 3; /* LEDX_OFF_H */
-	int8_t state;
+	uint8_t reg = pca9685_get_base_reg(pin) + 3; /* LEDX_OFF_H */
+	uint8_t state;
 
 	/* sanity check */
 	if (pca9685_pwm_check(pca) < 0)
@@ -210,7 +210,7 @@ int pca9685_pwm_full_off(struct pca9685 *pca, int pin, int tf)
 /* static functions */
 
 /* pca9685_get_base_reg: calculate the register for LED on pin */
-static int pca9685_get_base_reg(int pin)
+static uint8_t pca9685_get_base_reg(int pin)
 {
 	return (pin >= PCA9685_PIN_ALL) ? PCA9685_LEDALL_ON_L : PCA9685_LED0_ON_L + 4 * pin;
 }
@@ -218,7 +218,7 @@ static int pca9685_get_base_reg(int pin)
 /* pca9685_update_settings: update settings member of pca9685 struct. if tf then calculate states */
 static int pca9685_update_settings(struct pca9685 *pca, int tf)
 {
-	if (i2c_read_reg8(pca->fd, PCA9685_MODE1, (int8_t*) &(pca->settings)) < 0)
+	if (i2c_read_reg8(pca->fd, PCA9685_MODE1, &(pca->settings)) < 0)
 		return -1;
 
 	pca->settings &= 0x7F; /* set restart bit to 0 */
@@ -248,7 +248,7 @@ static int pca9685_pwm_check(struct pca9685 *pca)
 /* pca9685_enable_autoinc: enable autoinc setting. sets autoinc member accordingly */
 static void pca9685_enable_autoinc(struct pca9685 *pca)
 {
-	int autoinc;
+	uint8_t autoinc;
 
 	/* get settings */
 	if (pca9685_update_settings(pca, 0) < 0) {

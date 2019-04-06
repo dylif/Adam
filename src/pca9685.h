@@ -31,11 +31,11 @@ struct pca9685 {
 	int fd;
 	int addr;
 	float freq;
-	int settings;
-	int autoinc : 1;
-	int sleep;
-	int wake;
-	int restart;
+	uint8_t settings;
+	unsigned int autoinc : 1;
+	uint8_t sleep;
+	uint8_t wake;
+	uint8_t restart;
 };
 
 /* declare functions and useful macros */
@@ -44,8 +44,8 @@ struct pca9685 {
 extern struct pca9685 *pca9685_new(int addr, float freq);
 extern int pca9685_pwm_freq(struct pca9685 *pca, float freq);
 extern int pca9685_pwm_reset(struct pca9685 *pca);
-extern int pca9685_pwm_write(struct pca9685 *pca, int pin, int on, int off);
-extern int pca9685_pwm_read(struct pca9685 *pca, int pin, int16_t *on, int16_t *off);
+extern int pca9685_pwm_write(struct pca9685 *pca, int pin, uint16_t on, uint16_t off);
+extern int pca9685_pwm_read(struct pca9685 *pca, int pin, uint16_t *on, uint16_t *off);
 extern int pca9685_pwm_full_on(struct pca9685 *pca, int pin, int tf);
 extern int pca9685_pwm_full_off(struct pca9685 *pca, int pin, int tf);
 
