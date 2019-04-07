@@ -2,6 +2,7 @@
 #include <stdlib.h>
 
 #include <unistd.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <linux/i2c-dev.h>
@@ -15,54 +16,55 @@ static int pca9685_update_settings(struct pca9685 *pca, int tf);
 static int pca9685_pwm_check(struct pca9685 *pca);
 static void pca9685_enable_autoinc(struct pca9685 *pca);
 
-/* pca9685_new: create and setup a new pca9685 struct */
-struct pca9685 *pca9685_new(int addr, float freq)
+/* pca9685_new: setup a new pca9685 struct (select the address on the i2c device) */
+int pca9685_new(struct pca9685 *pca, int fd, unsigned int addr)
 {
-	struct pca9685 *pca;
-	int fd;
-
-	pca = malloc(sizeof(*pca));
-	if (pca == NULL)
-		return NULL;
-
-	/* open i2c device */
-	fd = open(DEVICE_I2C, O_RDWR);
-	if (fd < 0)
-		goto error_free_pca;
-	pca->fd = fd;
-
-	/* choose slave referenced by addr */
-	if (ioctl(pca->fd, I2C_SLAVE, addr) < 0)
-		goto error_free_pca;
-	pca->addr = addr;
-
-	pca9685_enable_autoinc(pca);
-
-	/* set pwm frequency and end sleep mode */
-	if (freq > 0) {
-		if (pca9685_pwm_freq(pca, freq) < 0)
-			pca->freq = 0; /* error value */
-		else 
-			pca->freq = freq;	
-	} else {
-		pca->freq = 0;
+	/* check struct */
+	if (pca == NULL) {
+		errno = EINVAL;
+		return -1;
 	}
 
-	return pca;
+	/* check i2c file */
+	if (fd < 0) {
+		errno = EBADFD;
+		return -1;
+	}	
 
-error_free_pca:
-	if (pca)
-		free(pca);
-	return NULL;
+	/* choose i2c slave addr */
+	if (ioctl(fd, I2C_SLAVE, addr) < 0)
+		return -1;
+
+	pca->fd = fd;
+	pca->addr = addr;
+
+	/* set defaults */
+	pca->freq = 0;
+	pca->autoinc = 0;
+	pca->settings = 0;
+	pca->sleep = 0;
+	pca->wake = 0;
+	pca->restart = 0;
+
+	return fd;
 }
 
-/* pca9685_pwm_freq: set a frequency for pwm signals */
-int pca9685_pwm_freq(struct pca9685 *pca, float freq)
+/* pca9685_pwm_init: set a frequency for pwm signals and enable auto increment of device registers */
+int pca9685_pwm_init(struct pca9685 *pca, float freq)
 {
 	uint8_t prescale;
 
+	/* check struct */
+	if (pca == NULL) {
+		errno = EINVAL;
+		return -1;
+	}
+
 	/* cap frequency at min and max */ 
-	freq = (freq > PCA9685_PWM_MAX ? PCA9685_PWM_MAX : (freq < PCA9685_PWM_MIN ? PCA9685_PWM_MIN : freq));
+	if (freq < PCA9685_PWM_MIN || freq > PCA9685_PWM_MAX) {
+		errno  = EINVAL;
+		return -1;
+	}
 
 	/* To set pwm frequency we have to set the prescale register. The formula is:
 	 * prescale = round(osc_clock / (4096 * frequency))) - 1 where osc_clock = 25 MHz
@@ -70,7 +72,7 @@ int pca9685_pwm_freq(struct pca9685 *pca, float freq)
 	 */
 	prescale = (uint8_t) (25000000.0f / (PCA9685_PWM_TICK_MAX * freq) - 0.5f);
 
-	/* calculate states */
+	/* update settings and calculate states */
 	if (pca9685_update_settings(pca, 1) < 0)
 		return -1;
 
@@ -88,6 +90,9 @@ int pca9685_pwm_freq(struct pca9685 *pca, float freq)
 		return -1;
 
 	pca->freq = freq;
+
+	/* enable auto increment */
+	pca9685_enable_autoinc(pca);
 
 	return pca->freq;
 }
@@ -190,7 +195,7 @@ int pca9685_pwm_full_off(struct pca9685 *pca, int pin, int tf)
 {
 	uint8_t reg = pca9685_get_base_reg(pin) + 3; /* LEDX_OFF_H */
 	uint8_t state;
-
+	
 	/* sanity check */
 	if (pca9685_pwm_check(pca) < 0)
 		return -1;
@@ -235,6 +240,12 @@ static int pca9685_update_settings(struct pca9685 *pca, int tf)
 /* pca9685_pwm_check: check if pwm settings are valid */
 static int pca9685_pwm_check(struct pca9685 *pca)
 {
+	/* check struct */
+	if (pca == NULL) {
+		errno = EINVAL;
+		return -1;
+	}
+	
 	/* must have register auto increment enabled for writing more than one byte to a register */
 	if (!pca->autoinc)
 		return -1;
