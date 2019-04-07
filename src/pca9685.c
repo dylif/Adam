@@ -13,7 +13,6 @@
 /* declare static functions */
 static uint8_t pca9685_get_base_reg(int pin);
 static int pca9685_update_settings(struct pca9685 *pca, int tf);
-static int pca9685_pwm_check(struct pca9685 *pca);
 static void pca9685_enable_autoinc(struct pca9685 *pca);
 
 /* pca9685_new: setup a new pca9685 struct (select the address on the i2c device) */
@@ -25,10 +24,20 @@ int pca9685_new(struct pca9685 *pca, int fd, unsigned int addr)
 		return -1;
 	}
 
+	/* set defaults */
+	pca->fd = -1;
+	pca->addr = 0;
+	pca->freq = 0;
+	pca->autoinc = 0;
+	pca->settings = 0;
+	pca->sleep = 0;
+	pca->wake = 0;
+	pca->restart = 0;
+
 	/* check i2c file */
 	if (fd < 0) {
 		errno = EBADFD;
-		return -1;
+		return fd;
 	}	
 
 	/* choose i2c slave addr */
@@ -38,19 +47,11 @@ int pca9685_new(struct pca9685 *pca, int fd, unsigned int addr)
 	pca->fd = fd;
 	pca->addr = addr;
 
-	/* set defaults */
-	pca->freq = 0;
-	pca->autoinc = 0;
-	pca->settings = 0;
-	pca->sleep = 0;
-	pca->wake = 0;
-	pca->restart = 0;
-
 	return fd;
 }
 
 /* pca9685_pwm_init: set a frequency for pwm signals and enable auto increment of device registers */
-int pca9685_pwm_init(struct pca9685 *pca, float freq)
+int pca9685_pwm_init(struct pca9685 *pca, unsigned int freq)
 {
 	uint8_t prescale;
 
@@ -62,7 +63,7 @@ int pca9685_pwm_init(struct pca9685 *pca, float freq)
 
 	/* cap frequency at min and max */ 
 	if (freq < PCA9685_PWM_MIN || freq > PCA9685_PWM_MAX) {
-		errno  = EINVAL;
+		errno = EDOM;
 		return -1;
 	}
 
@@ -70,7 +71,7 @@ int pca9685_pwm_init(struct pca9685 *pca, float freq)
 	 * prescale = round(osc_clock / (4096 * frequency))) - 1 where osc_clock = 25 MHz
 	 * Further info here: http://www.nxp.com/documents/data_sheet/PCA9685.pdf Page 24
 	 */
-	prescale = (uint8_t) (25000000.0f / (PCA9685_PWM_TICK_MAX * freq) - 0.5f);
+	prescale = (uint8_t) (PCA9685_PWM_OSC_CLK / (PCA9685_PWM_TICK_MAX * (float) freq) - 0.5f);
 
 	/* update settings and calculate states */
 	if (pca9685_update_settings(pca, 1) < 0)
@@ -212,6 +213,28 @@ int pca9685_pwm_full_off(struct pca9685 *pca, int pin, int tf)
 	return pin;
 }
 
+/* pca9685_pwm_check: check if pwm settings are valid */
+int pca9685_pwm_check(struct pca9685 *pca)
+{
+	/* check struct */
+	if (pca == NULL) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	/* must have register auto increment enabled for writing more than one byte to a register */ 
+	if (!(pca->autoinc))
+		return -1;
+
+	/* check if pwm frequency is valid */
+	if (pca->freq < PCA9685_PWM_MIN || pca->freq > PCA9685_PWM_MAX) {
+		errno = EDOM;
+		return -1;
+	}
+
+	return 0;
+}
+
 /* static functions */
 
 /* pca9685_get_base_reg: calculate the register for LED on pin */
@@ -233,25 +256,6 @@ static int pca9685_update_settings(struct pca9685 *pca, int tf)
 		pca->wake = pca->settings & PCA9685_WAKE; /* set sleep bit to 0 */
 		pca->restart = pca->wake | PCA9685_RESTART; /* set restart bit to 1 */
 	}
-
-	return 0;
-}
-
-/* pca9685_pwm_check: check if pwm settings are valid */
-static int pca9685_pwm_check(struct pca9685 *pca)
-{
-	/* check struct */
-	if (pca == NULL) {
-		errno = EINVAL;
-		return -1;
-	}
-	
-	/* must have register auto increment enabled for writing more than one byte to a register */
-	if (!pca->autoinc)
-		return -1;
-
-	if (pca->freq < PCA9685_PWM_MIN || pca->freq > PCA9685_PWM_MAX)
-		return pca->freq * -1;
 
 	return 0;
 }

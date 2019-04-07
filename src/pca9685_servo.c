@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <math.h>
+#include <errno.h>
 
 #include "pca9685.h"
 #include "pca9685_servo.h"
@@ -8,52 +9,60 @@
 static long map(long x, long in_min, long in_max, long out_min, long out_max); 
 static int us_to_tick(int us, int hz);
 
-/* servo_new: create and initalize a servo struct */
-struct pca9685_servo *pca9685_servo_new(struct pca9685 *pca, int pin, int us_min, int us_max, int us)
+/* pca9685_servo_new: create and initalize a servo struct */
+int pca9685_servo_new(struct pca9685_servo *servo, struct pca9685 *pca, int pin, int us_min, int us_max)
 {
-	struct pca9685_servo *servo;
+	int check;
 
-	servo = malloc(sizeof(*servo));
-	if (servo == NULL)
-		return NULL;
+	/* check struct */
+	if (servo == NULL) {
+		errno = EINVAL;
+		return -1;
+	}
 
-	/* ensure that the pca is valid */
-	if (pca == NULL)
-		goto error_free_servo;
-	servo->pca = pca;
+	/* set defaults */
+	servo->pca = NULL;
+        servo->us_min = -1;
+        servo->us_max = -1;
+	servo->pin = -1;
+	servo->us = -1;
 
-	/* validate value of pin, cap at min and max */
+	/* check pca struct */
+	if (pca == NULL) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	/* check if pca struct is setup for pwm */
+	if ((check = pca9685_pwm_check(pca)) < 0)
+		return check;	
+
+	/* validate value of pin and cap at min and max */
 	if (pin > PCA9685_PIN_MAX)
 		pin = PCA9685_PIN_MAX;
 	if (pin < 0)
 		pin = 0;
-	servo->pin = pin;
 
 	/* set servo min and max */
 	if (us_min < 0)
 		us_min = PCA9685_SERVO_MIN_PULSE_WIDTH;
 	if (us_max < 0 || us_max == us_min)
 		us_max = PCA9685_SERVO_MAX_PULSE_WIDTH;
+	
+	/* write validated values to members */
+	servo->pca = pca;
+	servo->pin = pin;
 	servo->us_min = us_min;
 	servo->us_max = us_max;
-	
-	/* initalize the servo */
-	if (pca9685_servo_write_us(servo, us) != us)
-		goto error_free_servo;
 
-	return servo;
-
-error_free_servo:
-	if (servo)
-		free(servo);
-	return NULL;
+	return pin;
 }
 
-/* servo_write_us: write a microsecond value to a servo struct. returns value written to servo */
+/* pca9685_servo_write_us: write a microsecond value to a servo struct. returns value written to servo */
 int pca9685_servo_write_us(struct pca9685_servo *servo, int us)
 {
 	/* sanity check */
-	if (us < servo->us_min || us > servo->us_max || servo == NULL)
+	if (servo == NULL || servo->pca == NULL || us < servo->us_min || us > servo->us_max)
 		return (servo->us = -1); /* ensure that us does get set */
 	
 	if (pca9685_pwm_write(servo->pca, servo->pin, 0, us_to_tick(us, servo->pca->freq)) < 0)
@@ -64,7 +73,7 @@ int pca9685_servo_write_us(struct pca9685_servo *servo, int us)
 	return servo->us;
 }
 
-/* pca9685_servo_deg_to_us: convert degrees to a mircoseconds value depending on the servo's min and max range */
+/* pca9685_servo_deg_to_us: convert degree value to a mircosecond value depending on the servo's min and max range */
 int pca9685_servo_deg_to_us(struct pca9685_servo *servo, int deg)
 {
 	return map(deg, 0, 180, servo->us_min, servo->us_max);

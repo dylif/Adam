@@ -8,6 +8,7 @@
 #define PCA9685_PWM_MIN 40
 #define PCA9685_PWM_MAX 1000
 #define PCA9685_PWM_TICK_MAX 4096
+#define PCA9685_PWM_OSC_CLK 25000000.0
 
 /* define registers */
 #define PCA9685_MODE1 0x0
@@ -29,8 +30,8 @@
 /* define pca9685 struct */
 struct pca9685 {
 	int fd;
-	int addr;
-	float freq;
+	unsigned int addr;
+	unsigned int freq;
 	unsigned int autoinc : 1;
 	uint8_t settings;
 	uint8_t sleep;
@@ -42,11 +43,12 @@ struct pca9685 {
 #define delay(ms) usleep(ms * 1000)
 
 extern int pca9685_new(struct pca9685 *pca, int fd, unsigned int addr);
-extern int pca9685_pwm_init(struct pca9685 *pca, float freq);
+extern int pca9685_pwm_init(struct pca9685 *pca, unsigned int freq);
 extern int pca9685_pwm_reset(struct pca9685 *pca);
 extern int pca9685_pwm_write(struct pca9685 *pca, int pin, uint16_t on, uint16_t off);
 extern int pca9685_pwm_read(struct pca9685 *pca, int pin, uint16_t *on, uint16_t *off);
 extern int pca9685_pwm_full_on(struct pca9685 *pca, int pin, int tf);
 extern int pca9685_pwm_full_off(struct pca9685 *pca, int pin, int tf);
+extern int pca9685_pwm_check(struct pca9685 *pca);
 
 #endif
