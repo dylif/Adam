@@ -71,8 +71,9 @@ int i2c_write_reg16(int fd, uint8_t reg, uint16_t data)
 		return fd;
 
 	buf[0] = reg;
-	buf[1] = (uint8_t) (data >> 8);
-	buf[2] = (uint8_t) (data & 0xFF);
+	buf[1] = (uint8_t) (data & 0xFF);
+	buf[2] = (uint8_t) (data >> 8);
+	
 
 	if (write(fd, buf, sz) != sz)
 		return -1;

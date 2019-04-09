@@ -1,7 +1,6 @@
 .vscode/
 */.vscode/
 
-test.*
-test
+*.o
 
 bin/
