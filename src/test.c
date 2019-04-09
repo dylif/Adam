@@ -13,6 +13,9 @@
 #define SERVO_MIN 644
 #define SERVO_MAX 2400
 
+#define ADDR 0x40
+#define HZ 50
+
 int main(void)
 {
 	struct pca9685 pca;
@@ -20,30 +23,30 @@ int main(void)
 
 	int fd = open(DEVICE_I2C, O_RDWR);
 	if (fd < 0) {
-		fprintf(stderr, "Error opening i2c\n");
+		fprintf(stderr, "error opening i2c\n");
 		return -1;
 	}
 
-	if (pca9685_new(&pca, fd, 0x40) < 0) {
+	if (pca9685_new(&pca, fd, ADDR) < 0) {
 		fprintf(stderr, "error creating pca: %s\n", strerror(errno));
 		return -1;
 	}
 	
-	if (pca9685_pwm_init(&pca, 50) < 0) {
+	if (pca9685_pwm_init(&pca, HZ) < 0) {
 		fprintf(stderr, "error pwm init: %s\n", strerror(errno));
 		return -1;
 	}
 
-	if (pca9685_servo_new(&servo0, &pca, 0, 490, 2400) < 0) {
+	if (pca9685_servo_new(&servo0, &pca, 0, SERVO_MIN, SERVO_MAX) < 0) {
 		fprintf(stderr, "error servo init: %s\n", strerror(errno));
 		return -1;
 	}
 
-	printf("center servo0 in 5 sec: %d\n", pca9685_servo_write_us(&servo0, 1500));
+	printf("center servo0 in 5 sec: %d\n", pca9685_servo_write_us(&servo0, pca9685_servo_deg_to_us(&servo0, 90)));
 	delay(5000);
-	printf("servo0: %d\n", pca9685_servo_write_us(&servo0, 634));
+	printf("servo0: %d\n", pca9685_servo_write_us(&servo0, pca9685_servo_deg_to_us(&servo0, 0)));
 	delay(3000);
-	printf("servo0: %d\n", pca9685_servo_write_us(&servo0, 2400));
+	printf("servo0: %d\n", pca9685_servo_write_us(&servo0, pca9685_servo_deg_to_us(&servo0, 180)));
 	delay(3000);
 
 	pca9685_pwm_reset(&pca);
