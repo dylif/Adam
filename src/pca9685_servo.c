@@ -43,11 +43,9 @@ int pca9685_servo_new(struct pca9685_servo *servo, struct pca9685 *pca, int pin,
 	if (pin < 0)
 		pin = 0;
 
-	/* set servo min and max */
-	if (us_min < 0)
-		us_min = PCA9685_SERVO_MIN_PULSE_WIDTH;
-	if (us_max < 0 || us_max == us_min)
-		us_max = PCA9685_SERVO_MAX_PULSE_WIDTH;
+	/* check servo min and max */
+	if (us_min < 0 || us_max < 0 || us_max == us_min)
+		return -1;
 	
 	/* write validated values to members */
 	servo->pca = pca;

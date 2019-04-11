@@ -3,9 +3,6 @@
 #ifndef PCA9685_SERVO_H
 #define PCA9685_SERVO_H
 
-#define PCA9685_SERVO_MIN_PULSE_WIDTH 544
-#define PCA9685_SERVO_MAX_PULSE_WIDTH 2400
-
 struct pca9685_servo {
         struct pca9685 *pca;
         int us_min;
