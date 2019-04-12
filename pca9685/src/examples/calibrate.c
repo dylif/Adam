@@ -53,7 +53,7 @@ int main(void)
 		int pin;
 		printf("Please enter a servo channel from 0-15:\n");
 		scanf("%d", &pin); 
-		if (pca9685_servo_new(&servo, &pca, 0, 100, 3000) < 0) {
+		if (pca9685_servo_new(&servo, &pca, pin, 100, 3000) < 0) {
 			fprintf(stderr, "error in servo init: %s\n", strerror(errno));
 			continue;
 		}
@@ -62,7 +62,7 @@ int main(void)
 		while (us > 0) {
 			if (pca9685_servo_write_us(&servo, us) < 0)
 				break;
-				
+
 			printf("Servo %d is currently at %d us\n", pin, us);
 			delay(1000);
 			
