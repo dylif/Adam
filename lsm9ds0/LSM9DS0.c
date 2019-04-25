@@ -12,28 +12,26 @@ static struct lsm9ds0_settings settings_def =
 	M_ODR_50
 };
 
-
-int lsm9ds0_new(struct lsm9ds0 *lsm, uint8_t g_addr, uint8_t xm_addr)
+uint16_t lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings, int fd, uint8_t g_addr, uint8_t am_addr;)
 {
-	if (lsm == NULL)
-		return -EINVAL;
-		
-	lsm->xm_addr = xm_addr;
-	lsm_t->g_addr = g_addr;
-}
-
-
-
-uint16_t lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings)
-{
+	int status;
+	
 	uint8_t g_test;
-	uint8_t xm_test;
+	uint8_t am_test;
 	
 	if (lsm == NULL)
 		return -EINVAL;
 	
 	if (settings == NULL)
 		settings = &LMS_Device_Defaults;
+		
+	if (fd < 0)
+		return fd;
+		
+	lsm->fd = fd;
+		
+	lsm->g_addr = g_addr;
+	lsm->am_addr = am_addr;
 
 	// Store the given scales in class variables. These scale variables
 	// are used throughout to calculate the actual g's, DPS,and Gs's.
@@ -47,10 +45,12 @@ uint16_t lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings)
 	calc_m_res(lsm); // Calculate Gs / ADC tick, stored in mRes variable
 	calc_a_res(lsm); // Calculate g / ADC tick, stored in aRes variable
 	
-	// To verify communication, we can read from the WHO_AM_I register of
-	// each device. Store those in a variable so we can return them.
-	g_test  = gReadByte(lsm_t,WHO_AM_I_G);		// Read the gyro WHO_AM_I
-	xm_test = xmReadByte(lsm_t,WHO_AM_I_XM);	// Read the accel/mag WHO_AM_I
+	status = i2c_read_reg8(fd, WHO_AM_I_G, &g_test);
+	if (status < 0)
+		return status;
+	status = i2c_read_reg8(fd, WHO_AM_I_AM, &am_test);
+	if (status < 0)
+		return status;
 	
 	// Gyro initialization stuff:
 	initGyro(lsm);		// This will "turn on" the gyro. Setting up interrupts, etc.
@@ -68,12 +68,14 @@ uint16_t lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings)
 	setMagScale(lsm_t,lsm_t->mScale); // Set the magnetometer's range.
 	
 	// Once everything is initialized, return the WHO_AM_I registers we read:
-	return (xmTest << 8) | gTest;
+	return (am_test << 8) | g_test;
 }
 
 
-void initGyro( LSM9DS0_t* lsm_t )
+int lsm9ds0_gyro_init(struct lsm9ds0 *lsm)
 {
+	int status;
+	
 	/* CTRL_REG1_G sets output data rate, bandwidth, power-down and enables
 	Bits[7:0]: DR1 DR0 BW1 BW0 PD Zen Xen Yen
 	DR[1:0] - Output data rate selection
@@ -82,7 +84,7 @@ void initGyro( LSM9DS0_t* lsm_t )
 		 Value depends on ODR. See datasheet table 21.
 	PD - Power down enable (0=power down mode, 1=normal or sleep mode)
 	Zen, Xen, Yen - Axis enable (o=disabled, 1=enabled)	*/
-	gWriteByte(lsm_t, CTRL_REG1_G, 0x0F); // Normal mode, enable all axes
+	i2c_write_reg8(lsm->fd, lsm->g_addr, CTRL_REG1_G, 0x0F); // Normal mode, enable all axes
 	
 	/* CTRL_REG2_G sets up the HPF
 	Bits[7:0]: 0 0 HPM1 HPM0 HPCF3 HPCF2 HPCF1 HPCF0
@@ -92,7 +94,7 @@ void initGyro( LSM9DS0_t* lsm_t )
 	HPCF[3:0] - High pass filter cutoff frequency
 		Value depends on data rate. See datasheet table 26.
 	*/
-	gWriteByte(lsm_t, CTRL_REG2_G, 0x00); // Normal mode, high cutoff frequency
+	i2c_write_reg8(lsm->fd, CTRL_REG2_G, 0x00); // Normal mode, high cutoff frequency
 	
 	/* CTRL_REG3_G sets up interrupt and DRDY_G pins
 	Bits[7:0]: I1_IINT1 I1_BOOT H_LACTIVE PP_OD I2_DRDY I2_WTM I2_ORUN I2_EMPTY
@@ -105,7 +107,7 @@ void initGyro( LSM9DS0_t* lsm_t )
 	I2_ORUN - FIFO overrun interrupt on DRDY_G (0=disable 1=enable)
 	I2_EMPTY - FIFO empty interrupt on DRDY_G (0=disable 1=enable) */
 	// Int1 enabled (pp, active low), data read on DRDY_G:
-	gWriteByte(lsm_t, CTRL_REG3_G, 0x88); 
+	i2c_write_reg8(lsm->fd, CTRL_REG3_G, 0x88); 
 	
 	/* CTRL_REG4_G sets the scale, update mode
 	Bits[7:0] - BDU BLE FS1 FS0 - ST1 ST0 SIM
@@ -117,7 +119,7 @@ void initGyro( LSM9DS0_t* lsm_t )
 		00=disabled, 01=st 0 (x+, y-, z-), 10=undefined, 11=st 1 (x-, y+, z+)
 	SIM - SPI serial interface mode select
 		0=4 wire, 1=3 wire */
-	gWriteByte(lsm_t, CTRL_REG4_G, 0x00); // Set scale to 245 dps
+	i2c_write_reg8(lsm->fd, CTRL_REG4_G, 0x00); // Set scale to 245 dps
 	
 	/* CTRL_REG5_G sets up the FIFO, HPF, and INT1
 	Bits[7:0] - BOOT FIFO_EN - HPen INT1_Sel1 INT1_Sel0 Out_Sel1 Out_Sel0
@@ -126,7 +128,7 @@ void initGyro( LSM9DS0_t* lsm_t )
 	HPen - HPF enable (0=disable, 1=enable)
 	INT1_Sel[1:0] - Int 1 selection configuration
 	Out_Sel[1:0] - Out selection configuration */
-	gWriteByte(lsm_t, CTRL_REG5_G, 0x00);
+	i2c_write_reg8(lsm->fd, CTRL_REG5_G, 0x00);
 	
 	// Temporary !!! For testing !!! Remove !!! Or make useful !!!
 	configGyroInt(lsm_t,0x2A, 0, 0, 0, 0); // Trigger interrupt when above 0 DPS...
@@ -241,7 +243,7 @@ void initMag(LSM9DS0_t* lsm_t)
 // subtract the biases ourselves. This results in a more accurate measurement in general and can
 // remove errors due to imprecise or varying initial placement. Calibration of sensor data in this manner
 // is good practice.
-void calLSM9DS0(LSM9DS0_t* lsm_t, float * gbias, float * abias)
+void calLSM9DS0(LSM9DS0_t* lsm, float *gbias, float *abias)
 {  
   uint8_t data[6] 	= {0, 0, 0, 0, 0, 0};
   int16_t 
@@ -334,7 +336,7 @@ void LSM9DS0_readTemp(LSM9DS0_t* lsm_t)
 	lsm_t->temperature = (((int16_t) temp[1] << 12) | temp[0] << 4 ) >> 4; // Temperature is a 12-bit signed integer
 }
 
-void LSM9DS0_readGyro(LSM9DS0_t* lsm_t)
+void LSM9DS0_readGyro(struct lsm9ds0 *lsm)
 {
 	uint8_t temp[6]; // We'll read six bytes from the gyro into temp
 	gReadBytes(lsm_t,OUT_X_L_G, temp, 6); // Read 6 bytes, beginning at OUT_X_L_G
@@ -343,25 +345,25 @@ void LSM9DS0_readGyro(LSM9DS0_t* lsm_t)
 	lsm_t->gz = (temp[5] << 8) | temp[4]; // Store z-axis values into gz
 }
 
-float calcGyro(LSM9DS0_t* lsm_t, int16_t gyro)
+float calcGyro(struct lsm9ds0 *lsm, int16_t gyro)
 {
 	// Return the gyro raw reading times our pre-calculated DPS / (ADC tick):
 	return lsm_t->gRes * gyro; 
 }
 
-float calcAccel(LSM9DS0_t* lsm_t, int16_t accel)
+float calcAccel(struct lsm9ds0 *lsm, int16_t accel)
 {
 	// Return the accel raw reading times our pre-calculated g's / (ADC tick):
 	return lsm_t->aRes * accel;
 }
 
-float calcMag(LSM9DS0_t* lsm_t, int16_t mag)
+float calcMag(struct lsm9ds0 *lsm, int16_t mag)
 {
 	// Return the mag raw reading times our pre-calculated Gs / (ADC tick):
 	return lsm_t->mRes * mag;
 }
 
-void setGyroScale(LSM9DS0_t* lsm_t, gyro_scale gScl)
+void setGyroScale(struct lsm9ds0 *lsm, gyro_scale gScl)
 {
 	// We need to preserve the other bytes in CTRL_REG4_G. So, first read it:
 	uint8_t temp = gReadByte(lsm_t,CTRL_REG4_G);
@@ -380,7 +382,7 @@ void setGyroScale(LSM9DS0_t* lsm_t, gyro_scale gScl)
 	calcgRes(lsm_t);
 }
 
-void setAccelScale(LSM9DS0_t* lsm_t, accel_scale aScl)
+void setAccelScale(struct lsm9ds0 *lsm, accel_scale aScl)
 {
 	// We need to preserve the other bytes in CTRL_REG2_XM. So, first read it:
 	uint8_t temp = xmReadByte(lsm_t,CTRL_REG2_XM);
@@ -399,7 +401,7 @@ void setAccelScale(LSM9DS0_t* lsm_t, accel_scale aScl)
 	calcaRes(lsm_t);
 }
 
-void setMagScale(LSM9DS0_t* lsm_t, mag_scale mScl)
+void setMagScale(struct lsm9ds0 *lsm, mag_scale mScl)
 {
 	// We need to preserve the other bytes in CTRL_REG6_XM. So, first read it:
 	uint8_t temp = xmReadByte(lsm_t,CTRL_REG6_XM);
@@ -418,7 +420,7 @@ void setMagScale(LSM9DS0_t* lsm_t, mag_scale mScl)
 	calcmRes(lsm_t);
 }
 
-void setGyroODR(LSM9DS0_t* lsm_t, gyro_odr gRate)
+void setGyroODR(struct lsm9ds0 *lsm, gyro_odr gRate)
 {
 	// We need to preserve the other bytes in CTRL_REG1_G. So, first read it:
 	uint8_t temp = gReadByte(lsm_t,CTRL_REG1_G);
@@ -431,7 +433,7 @@ void setGyroODR(LSM9DS0_t* lsm_t, gyro_odr gRate)
 	gWriteByte(lsm_t, CTRL_REG1_G, temp);
 }
 
-void setAccelODR(LSM9DS0_t* lsm_t, accel_odr aRate)
+void setAccelODR(struct lsm9ds0 *lsm, accel_odr aRate)
 {
 	// We need to preserve the other bytes in CTRL_REG1_XM. So, first read it:
 	uint8_t temp = xmReadByte(lsm_t,CTRL_REG1_XM);
@@ -443,7 +445,7 @@ void setAccelODR(LSM9DS0_t* lsm_t, accel_odr aRate)
 	xmWriteByte(lsm_t,CTRL_REG1_XM, temp);
 }
 
-void setAccelABW(LSM9DS0_t* lsm_t, accel_abw abwRate)
+void setAccelABW(struct lsm9ds0 *lsm, accel_abw abwRate)
 {
 	// We need to preserve the other bytes in CTRL_REG2_XM. So, first read it:
 	uint8_t temp = xmReadByte(lsm_t,CTRL_REG2_XM);
@@ -455,7 +457,7 @@ void setAccelABW(LSM9DS0_t* lsm_t, accel_abw abwRate)
 	xmWriteByte(lsm_t,CTRL_REG2_XM, temp);
 }
 
-void setMagODR(LSM9DS0_t* lsm_t, mag_odr mRate)
+void setMagODR(struct lsm9ds0 *lsm, mag_odr mRate)
 {
 	// We need to preserve the other bytes in CTRL_REG5_XM. So, first read it:
 	uint8_t temp = xmReadByte(lsm_t,CTRL_REG5_XM);
@@ -468,7 +470,7 @@ void setMagODR(LSM9DS0_t* lsm_t, mag_odr mRate)
 }
 
 
-void configGyroInt(LSM9DS0_t* lsm_t,  uint8_t int1Cfg, uint16_t int1ThsX, uint16_t int1ThsY, uint16_t int1ThsZ, uint8_t duration)
+void configGyroInt(struct lsm9ds0 *lsm,  uint8_t int1Cfg, uint16_t int1ThsX, uint16_t int1ThsY, uint16_t int1ThsZ, uint8_t duration)
 {
 	gWriteByte(lsm_t, INT1_CFG_G, int1Cfg);
 	gWriteByte(lsm_t, INT1_THS_XH_G, (int1ThsX & 0xFF00) >> 8);
@@ -484,7 +486,7 @@ void configGyroInt(LSM9DS0_t* lsm_t,  uint8_t int1Cfg, uint16_t int1ThsX, uint16
 }
 
 
-void calcgRes(LSM9DS0_t* lsm_t)
+void calcgRes(struct lsm9ds0 *lsm)
 {
 	// Possible gyro scales (and their register bit settings) are:
 	// 245 DPS (00), 500 DPS (01), 2000 DPS (10). Here's a bit of an algorithm
@@ -503,7 +505,7 @@ void calcgRes(LSM9DS0_t* lsm_t)
 	}
 }
 
-void calcaRes(LSM9DS0_t* lsm_t)
+void calcaRes(struct lsm9ds0 *lsm)
 {
 	// Possible accelerometer scales (and their register bit settings) are:
 	// 2 g (000), 4g (001), 6g (010) 8g (011), 16g (100). Here's a bit of an 
@@ -512,7 +514,7 @@ void calcaRes(LSM9DS0_t* lsm_t)
 		   (((float)lsm_t->aScale + 1.0f) * 2.0f) / 32768.0f;
 }
 
-void calcmRes(LSM9DS0_t* lsm_t)
+void calcmRes(struct lsm9ds0 *lsm)
 {
 	// Possible magnetometer scales (and their register bit settings) are:
 	// 2 Gs (00), 4 Gs (01), 8 Gs (10) 12 Gs (11). Here's a bit of an algorithm
@@ -520,76 +522,16 @@ void calcmRes(LSM9DS0_t* lsm_t)
 	lsm_t->mRes = lsm_t->mScale == M_SCALE_2GS ? 2.0f / 32768.0f : 
 	       (float) (lsm_t->mScale << 2) / 32768.0f;
 }
-	
-void gWriteByte(LSM9DS0_t* lsm_t, uint8_t subAddress, uint8_t data)
+
+/* static functions */
+static int g_read8(struct lsm9ds0 *lsm, uint8_t reg, uint8_t *buf)
 {
-	// Whether we're using I2C or SPI, write a byte using the
-	// gyro-specific I2C address or SPI CS pin.
-	#if(LSM_I2C_SUPPORT==1)
-	if (lsm_t->interfaceMode == MODE_I2C)
-		I2CwriteByte(lsm_t->lsm_t->gAddress, subAddress, data);
-	else if (lsm_t->interfaceMode == MODE_SPI)
-	#endif
-		SPIwriteByte(lsm_t->gAddress, subAddress, data,'g');
+	return i2c_read_reg8(lsm->fd, lsm->g_addr, reg, buf);
 }
 
-void xmWriteByte(LSM9DS0_t* lsm_t, uint8_t subAddress, uint8_t data)
+static int g_write8(struct lsm9ds0 *lsm, uint8_t reg, uint8_t data)
 {
-	// Whether we're using I2C or SPI, write a byte using the
-	// accelerometer-specific I2C address or SPI CS pin.
-	#if(LSM_I2C_SUPPORT==1)
-	if (lsm_t->interfaceMode == MODE_I2C)
-		I2CwriteByte(lsm_t->xmAddress, subAddress, data);
-	else if (lsm_t->interfaceMode == MODE_SPI)
-	#endif
-		SPIwriteByte(lsm_t->xmAddress, subAddress, data,'a');
+	return i2c_write_reg8(lsm->fd, lsm->g_addr, reg, data);
 }
 
-uint8_t gReadByte(LSM9DS0_t* lsm_t, uint8_t subAddress)
-{
-	// Whether we're using I2C or SPI, read a byte using the
-	// gyro-specific I2C address or SPI CS pin.
-	#if(LSM_I2C_SUPPORT==1)
-	if (lsm_t->interfaceMode == MODE_I2C)
-		return I2CreadByte(lsm_t->gAddress, subAddress);
-	else if (lsm_t->interfaceMode == MODE_SPI)
-	#endif
-		return SPIreadByte(lsm_t->gAddress, subAddress,'g');
-}
-
-void gReadBytes(LSM9DS0_t* lsm_t, uint8_t subAddress, uint8_t * dest, uint8_t count)
-{
-	// Whether we're using I2C or SPI, read multiple bytes using the
-	// gyro-specific I2C address or SPI CS pin.
-	#if(LSM_I2C_SUPPORT==1)
-	if (lsm_t->interfaceMode == MODE_I2C)
-		I2CreadBytes(lsm_t->gAddress, subAddress, dest, count);
-	else if (lsm_t->interfaceMode == MODE_SPI)
-	#endif
-		SPIreadBytes(lsm_t->gAddress, subAddress, dest, count,'g');
-}
-
-uint8_t xmReadByte(LSM9DS0_t* lsm_t, uint8_t subAddress)
-{
-	// Whether we're using I2C or SPI, read a byte using the
-	// accelerometer-specific I2C address or SPI CS pin.
-	#if(LSM_I2C_SUPPORT==1)
-	if (lsm_t->interfaceMode == MODE_I2C)
-		return I2CreadByte(lsm_t->xmAddress, subAddress);
-	else if (lsm_t->interfaceMode == MODE_SPI)
-	#endif
-		return SPIreadByte(lsm_t->xmAddress, subAddress,'a');
-}
-
-void xmReadBytes(LSM9DS0_t* lsm_t, uint8_t subAddress, uint8_t * dest, uint8_t count)
-{
-	// Whether we're using I2C or SPI, read multiple bytes using the
-	// accelerometer-specific I2C address or SPI CS pin.
-	#if(LSM_I2C_SUPPORT==1)
-	if (lsm_t->interfaceMode == MODE_I2C)
-		I2CreadBytes(lsm_t->xmAddress, subAddress, dest, count);
-	else if (lsm_t->interfaceMode == MODE_SPI)
-	#endif
-		SPIreadBytes(lsm_t->xmAddress, subAddress, dest, count, 'a');
-}
-
+static int

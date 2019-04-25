@@ -36,8 +36,8 @@
 //////////////////////////////////////////
 // LSM9DS0 Accel/Magneto (XM) Registers //
 //////////////////////////////////////////
-#define OUT_TEMP_L_XM		0x05
-#define OUT_TEMP_H_XM		0x06
+#define OUT_TEMP_L_AM		0x05
+#define OUT_TEMP_H_AM		0x06
 #define STATUS_REG_M		0x07
 #define OUT_X_L_M			0x08
 #define OUT_X_H_M			0x09
@@ -45,7 +45,7 @@
 #define OUT_Y_H_M			0x0B
 #define OUT_Z_L_M			0x0C
 #define OUT_Z_H_M			0x0D
-#define WHO_AM_I_XM			0x0F
+#define WHO_AM_I_AM			0x0F
 #define INT_CTRL_REG_M		0x12
 #define INT_SRC_REG_M		0x13
 #define INT_THS_L_M			0x14
@@ -59,14 +59,14 @@
 #define REFERENCE_X			0x1C
 #define REFERENCE_Y			0x1D
 #define REFERENCE_Z			0x1E
-#define CTRL_REG0_XM		0x1F
-#define CTRL_REG1_XM		0x20
-#define CTRL_REG2_XM		0x21
-#define CTRL_REG3_XM		0x22
-#define CTRL_REG4_XM		0x23
-#define CTRL_REG5_XM		0x24
-#define CTRL_REG6_XM		0x25
-#define CTRL_REG7_XM		0x26
+#define CTRL_REG0_AM		0x1F
+#define CTRL_REG1_AM		0x20
+#define CTRL_REG2_AM		0x21
+#define CTRL_REG3_AM		0x22
+#define CTRL_REG4_AM		0x23
+#define CTRL_REG5_AM		0x24
+#define CTRL_REG6_AM		0x25
+#define CTRL_REG7_AM		0x26
 #define STATUS_REG_A		0x27
 #define OUT_X_L_A			0x28
 #define OUT_X_H_A			0x29
@@ -179,9 +179,11 @@ enum mag_odr_x
 
 
 struct lsm9ds0
-{		
+{	
+	int fd;
+		
 	uint8_t g_addr;
-	uint8_t xm_addr;
+	uint8_t am_addr;
 	
 	// gScale, aScale, and mScale store the current scale range for each 
 	// sensor. Should be updated whenever that value changes.
@@ -211,9 +213,9 @@ struct lsm9ds0
 	int16_t	my; 
 	int16_t	mz; // x, y, and z axis readings of the magnetometer
     
-    int16_t temperature;
-	float 	abias[3];
-    float 	gbias[3];
+    int16_t temp;
+	float 	a_bias[3];
+    float 	g_bias[3];
 
 }
 
