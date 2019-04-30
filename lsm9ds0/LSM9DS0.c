@@ -41,31 +41,36 @@ uint16_t lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings, int
 	
 	// Once we have the scale values, we can calculate the resolution
 	// of each sensor. That's what these functions are for. One for each sensor
-	calc_g_res(lsm); // Calculate DPS / ADC tick, stored in gRes variable
-	calc_m_res(lsm); // Calculate Gs / ADC tick, stored in mRes variable
-	calc_a_res(lsm); // Calculate g / ADC tick, stored in aRes variable
+	calc_g_res(lsm); // Calculate DPS / ADC tick, stored in g_res variable
+	calc_m_res(lsm); // Calculate Gs / ADC tick, stored in m_res variable
+	calc_a_res(lsm); // Calculate g / ADC tick, stored in a_res variable
 	
-	status = i2c_read_reg8(fd, WHO_AM_I_G, &g_test);
-	if (status < 0)
+	if ((status = g_read8(lsm, WHO_AM_I_G, &g_test)) < 0)
 		return status;
-	status = i2c_read_reg8(fd, WHO_AM_I_AM, &am_test);
-	if (status < 0)
+	if ((status = am_read8(lsm, WHO_AM_I_AM, &am_test)) < 0)
 		return status;
 	
-	// Gyro initialization stuff:
-	initGyro(lsm);		// This will "turn on" the gyro. Setting up interrupts, etc.
-	setGyroODR(lsm, settings->g_odr); 		// Set the gyro output data rate and bandwidth.
-	setGyroScale(lsm, lsm->g_scl); 	// Set the gyro range
+	/* Gyro init: */
 	
-	// Accelerometer initialization stuff:
-	initAccel(lsm); // "Turn on" all axes of the accel. Set up interrupts, etc.
-	setAccelODR(lsm,init_t->a_odr); // Set the accel data rate.
-	setAccelScale(lsm_t,lsm_t->a_scl); // Set the accel range.
+	/* This will "turn on" the gyro. Setting up interrupts, etc. */
+	if ((status = lsm9ds0_gyro_init(lsm)) < 0)
+		return status;
+	/* Set the gyro output data rate and bandwidth. */
+	if ((status = setGyroODR(lsm, settings->g_odr)) < 0)
+		return status;
+	/* Set the gyro range */
+	if ((status = setGyroScale(lsm, lsm->g_scl)) < 0)
+		return status;
+	
+	/* Accelerometer init: */
+	lsm9ds0_accel_init(lsm); // "Turn on" all axes of the accel. Set up interrupts, etc.
+	set_a_odr(lsm, settings->a_odr); // Set the accel data rate.
+	set_a_scl(lsm, lsm->a_scl); // Set the accel range.
 	
 	// Magnetometer initialization stuff:
-	initMag(lsm_t); // "Turn on" all axes of the mag. Set up interrupts, etc.
-	setMagODR(lsm_t,init_t->mODR); // Set the magnetometer output data rate.
-	setMagScale(lsm_t,lsm_t->mScale); // Set the magnetometer's range.
+	lsm9ds0_mag_init(lsm); // "Turn on" all axes of the mag. Set up interrupts, etc.
+	set_m_odr(lsm, settings->m_odr); // Set the magnetometer output data rate.
+	set_m_scl(lsm, lsm->m_scl); // Set the magnetometer's range.
 	
 	// Once everything is initialized, return the WHO_AM_I registers we read:
 	return (am_test << 8) | g_test;
@@ -96,8 +101,10 @@ int lsm9ds0_gyro_init(struct lsm9ds0 *lsm)
 		
 	return 0;
 	
+	/*
 	// Temporary !!! For testing !!! Remove !!! Or make useful !!!
-	configGyroInt(lsm_t,0x2A, 0, 0, 0, 0); // Trigger interrupt when above 0 DPS...
+	configGyroInt(lsm,0x2A, 0, 0, 0, 0); // Trigger interrupt when above 0 DPS...
+	*/
 }
 
 int lsm9ds0_accel_init(struct lsm9ds0 *lsm)
@@ -125,21 +132,30 @@ int lsm9ds0_accel_init(struct lsm9ds0 *lsm)
 
 
 int lsm9ds0_mag_init(struct lsm9ds0 *lsm)
-{									
+{			
+	int status;
+							
 	/* Mag data rate - 100 Hz, enable temperature sensor */
-	xmWriteByte(lsm_t,CTRL_REG5_XM, 0x94); 
+	if ((status = am_write8(lsm, CTRL_REG5_AM, 0x94)) < 0)
+		return status;
 	
 	/* Mag scale to +/- 2GS */				
-	xmWriteByte(lsm_t,CTRL_REG6_XM, 0x00); 
+	if ((status = am_write8(lsm, CTRL_REG6_AM, 0x00)) < 0)
+		return status;
 	
 	/* Continuous conversion mode */
-	xmWriteByte(lsm_t,CTRL_REG7_XM, 0x00); 
+	if ((status = am_write8(lsm, CTRL_REG7_AM, 0x00)) < 0)
+		return status;
 	
 	/* Magnetometer data ready on INT2_XM (0x08) */
-	xmWriteByte(lsm_t,CTRL_REG4_XM, 0x04); 
+	if ((status = am_write8(lsm, CTRL_REG4_AM, 0x04)) < 0)
+		return status;
 	
 	/* Enable interrupts for mag, active-low, push-pull */
-	xmWriteByte(lsm_t,INT_CTRL_REG_M, 0x09); 
+	if ((status = am_write8(lsm, INT_CTRL_REG_M, 0x09)) < 0)
+		return status;
+	
+	return 0;
 }
 
 // This is a function that uses the FIFO to accumulate sample of accelerometer and gyro data, average
@@ -149,25 +165,25 @@ int lsm9ds0_mag_init(struct lsm9ds0 *lsm)
 // subtract the biases ourselves. This results in a more accurate measurement in general and can
 // remove errors due to imprecise or varying initial placement. Calibration of sensor data in this manner
 // is good practice.
-void calLSM9DS0(struct lsm9ds0 *lsm, float *gbias, float *abias)
+int lsm9ds0_cal(struct lsm9ds0 *lsm, float *gbias, float *abias)
 {  
-  uint8_t data[6] 	= {0, 0, 0, 0, 0, 0};
-  int16_t 
-  	gyro_bias[3] 	= {0, 0, 0}, 
-  	accel_bias[3] 	= {0, 0, 0};
+  uint8_t data[6] = {0, 0, 0, 0, 0, 0};
+  int16_t gyro_bias[3] = {0, 0, 0};
+  int16_t accel_bias[3] = {0, 0, 0};
+  	
   int samples, ii;
   
   // First get gyro bias
-  uint8_t c = gReadByte(lsm_t,CTRL_REG5_G);
-  gWriteByte(lsm_t, CTRL_REG5_G, c | 0x40);         	// Enable gyro FIFO  
+  uint8_t c = gReadByte(lsm, CTRL_REG5_G);
+  g_write8(lsm, CTRL_REG5_G, c | 0x40);         	// Enable gyro FIFO  
   delay(20);                                 	// Wait for change to take effect
-  gWriteByte(lsm_t, FIFO_CTRL_REG_G, 0x20 | 0x1F);  	// Enable gyro FIFO stream mode and set watermark at 32 samples
+  g_write8(lsm, FIFO_CTRL_REG_G, 0x20 | 0x1F);  	// Enable gyro FIFO stream mode and set watermark at 32 samples
   delay(1000);  								// delay 1000 milliseconds to collect FIFO samples
   
-  samples = (gReadByte(lsm_t,FIFO_SRC_REG_G) & 0x1F); // Read number of stored samples
+  samples = (g_read8(lsm,FIFO_SRC_REG_G) & 0x1F); // Read number of stored samples
 
   for(ii = 0; ii < samples ; ii++) {            // Read the gyro data stored in the FIFO
-    gReadBytes(lsm_t,OUT_X_L_G,  &data[0], 6);
+    gReadBytes(lsm,OUT_X_L_G,  &data[0], 6);
     gyro_bias[0] += (((int16_t)data[1] << 8) | data[0]);
     gyro_bias[1] += (((int16_t)data[3] << 8) | data[2]);
     gyro_bias[2] += (((int16_t)data[5] << 8) | data[4]);
@@ -177,256 +193,365 @@ void calLSM9DS0(struct lsm9ds0 *lsm, float *gbias, float *abias)
   gyro_bias[1] /= samples; 
   gyro_bias[2] /= samples; 
   
-  gbias[0] = (float)gyro_bias[0]*lsm_t->gRes; 			 // Properly scale the data to get deg/s
-  gbias[1] = (float)gyro_bias[1]*lsm_t->gRes;
-  gbias[2] = (float)gyro_bias[2]*lsm_t->gRes;
+  gbias[0] = (float) gyro_bias[0] * lsm->g_res; 			 // Properly scale the data to get deg/s
+  gbias[1] = (float) gyro_bias[1] * lsm->g_res;
+  gbias[2] = (float) gyro_bias[2] * lsm->g_res;
   
-  c = gReadByte(lsm_t,CTRL_REG5_G);
-  gWriteByte(lsm_t, CTRL_REG5_G, c & ~0x40);  			// Disable gyro FIFO  
+  c = gReadByte(lsm,CTRL_REG5_G);
+  g_write8(lsm, CTRL_REG5_G, c & ~0x40);  			// Disable gyro FIFO  
   delay(20);
-  gWriteByte(lsm_t, FIFO_CTRL_REG_G, 0x00);   			// Enable gyro bypass mode
+  g_write8(lsm, FIFO_CTRL_REG_G, 0x00);   			// Enable gyro bypass mode
   
 
   //  Now get the accelerometer biases
-  c = xmReadByte(lsm_t,CTRL_REG0_XM);
-  xmWriteByte(lsm_t,CTRL_REG0_XM, c | 0x40);      	// Enable accelerometer FIFO  
+  c = am_read8(lsm,CTRL_REG0_XM);
+  am_write8(lsm,CTRL_REG0_XM, c | 0x40);      	// Enable accelerometer FIFO  
   delay(20);                                	// Wait for change to take effect
-  xmWriteByte(lsm_t,FIFO_CTRL_REG, 0x20 | 0x1F);  	// Enable accelerometer FIFO stream mode and set watermark at 32 samples
+  am_write8(lsm,FIFO_CTRL_REG, 0x20 | 0x1F);  	// Enable accelerometer FIFO stream mode and set watermark at 32 samples
   delay(1000); 	 								// delay 1000 milliseconds to collect FIFO samples
 
-  samples = (xmReadByte(lsm_t,FIFO_SRC_REG) & 0x1F); 	// Read number of stored accelerometer samples
+  samples = (am_read8(lsm,FIFO_SRC_REG) & 0x1F); 	// Read number of stored accelerometer samples
 
    for(ii = 0; ii < samples ; ii++) {          	// Read the accelerometer data stored in the FIFO
-    xmReadBytes(lsm_t,OUT_X_L_A, &data[0], 6);
+    xmReadBytes(lsm,OUT_X_L_A, &data[0], 6);
     accel_bias[0] += (((int16_t)data[1] << 8) | data[0]);
     accel_bias[1] += (((int16_t)data[3] << 8) | data[2]);
-    accel_bias[2] += (((int16_t)data[5] << 8) | data[4]) - (int16_t)(1.0f/lsm_t->aRes); // Assumes sensor facing up!
+    accel_bias[2] += (((int16_t)data[5] << 8) | data[4]) - (int16_t)(1.0f/lsm->a_res); // Assumes sensor facing up!
   }  
 
   accel_bias[0] /= samples; // average the data
   accel_bias[1] /= samples; 
   accel_bias[2] /= samples; 
   
-  abias[0] = (float)accel_bias[0]*lsm_t->aRes; // Properly scale data to get gs
-  abias[1] = (float)accel_bias[1]*lsm_t->aRes;
-  abias[2] = (float)accel_bias[2]*lsm_t->aRes;
+  abias[0] = (float) accel_bias[0] * lsm->a_res; // Properly scale data to get gs
+  abias[1] = (float) accel_bias[1] * lsm->a_res;
+  abias[2] = (float) accel_bias[2] * lsm->a_res;
 
-  c = xmReadByte(lsm_t,CTRL_REG0_XM);
-  xmWriteByte(lsm_t,CTRL_REG0_XM, c & ~0x40);    // Disable accelerometer FIFO  
+  c = am_read8(lsm,CTRL_REG0_XM);
+  am_write8(lsm, CTRL_REG0_XM, c & ~0x40);    // Disable accelerometer FIFO  
   delay(20);
-  xmWriteByte(lsm_t,FIFO_CTRL_REG, 0x00);       // Enable accelerometer bypass mode
+  am_write8(lsm, FIFO_CTRL_REG, 0x00);       // Enable accelerometer bypass mode
 }
 
-void LSM9DS0_readAccel(LSM9DS0_t* lsm_t)
+int LSM9DS0_readAccel(struct lsm9ds0 *lsm)
 {
 	uint8_t temp[6]; // We'll read six bytes from the accelerometer into temp	
-	xmReadBytes(lsm_t,OUT_X_L_A, temp, 6); // Read 6 bytes, beginning at OUT_X_L_A
-	lsm_t->ax = (temp[1] << 8) | temp[0]; // Store x-axis values into ax
-	lsm_t->ay = (temp[3] << 8) | temp[2]; // Store y-axis values into ay
-	lsm_t->az = (temp[5] << 8) | temp[4]; // Store z-axis values into az
+	xmReadBytes(lsm,OUT_X_L_A, temp, 6); // Read 6 bytes, beginning at OUT_X_L_A
+	lsm->ax = (temp[1] << 8) | temp[0]; // Store x-axis values into ax
+	lsm->ay = (temp[3] << 8) | temp[2]; // Store y-axis values into ay
+	lsm->az = (temp[5] << 8) | temp[4]; // Store z-axis values into az
 }
 
-void LSM9DS0_readMag(LSM9DS0_t* lsm_t)
+int LSM9DS0_readMag(struct lsm9ds0 *lsm)
 {
 	uint8_t temp[6]; // We'll read six bytes from the mag into temp	
-	xmReadBytes(lsm_t,OUT_X_L_M, temp, 6); // Read 6 bytes, beginning at OUT_X_L_M
-	lsm_t->mx = (temp[1] << 8) | temp[0]; // Store x-axis values into mx
-	lsm_t->my = (temp[3] << 8) | temp[2]; // Store y-axis values into my
-	lsm_t->mz = (temp[5] << 8) | temp[4]; // Store z-axis values into mz
+	xmReadBytes(lsm,OUT_X_L_M, temp, 6); // Read 6 bytes, beginning at OUT_X_L_M
+	lsm->mx = (temp[1] << 8) | temp[0]; // Store x-axis values into mx
+	lsm->my = (temp[3] << 8) | temp[2]; // Store y-axis values into my
+	lsm->mz = (temp[5] << 8) | temp[4]; // Store z-axis values into mz
 }
 
-void LSM9DS0_readTemp(LSM9DS0_t* lsm_t)
+int LSM9DS0_readTemp(struct lsm9ds0 *lsm)
 {
 	uint8_t temp[2]; // We'll read two bytes from the temperature sensor into temp	
-	xmReadBytes(lsm_t,OUT_TEMP_L_XM, temp, 2); // Read 2 bytes, beginning at OUT_TEMP_L_M
-	lsm_t->temperature = (((int16_t) temp[1] << 12) | temp[0] << 4 ) >> 4; // Temperature is a 12-bit signed integer
+	xmReadBytes(lsm,OUT_TEMP_L_XM, temp, 2); // Read 2 bytes, beginning at OUT_TEMP_L_M
+	lsm->temperature = (((int16_t) temp[1] << 12) | temp[0] << 4 ) >> 4; // Temperature is a 12-bit signed integer
 }
 
-void LSM9DS0_readGyro(struct lsm9ds0 *lsm)
+int LSM9DS0_readGyro(struct lsm9ds0 *lsm)
 {
 	uint8_t temp[6]; // We'll read six bytes from the gyro into temp
-	gReadBytes(lsm_t,OUT_X_L_G, temp, 6); // Read 6 bytes, beginning at OUT_X_L_G
-	lsm_t->gx = (temp[1] << 8) | temp[0]; // Store x-axis values into gx
-	lsm_t->gy = (temp[3] << 8) | temp[2]; // Store y-axis values into gy
-	lsm_t->gz = (temp[5] << 8) | temp[4]; // Store z-axis values into gz
+	gReadBytes(lsm,OUT_X_L_G, temp, 6); // Read 6 bytes, beginning at OUT_X_L_G
+	lsm->gx = (temp[1] << 8) | temp[0]; // Store x-axis values into gx
+	lsm->gy = (temp[3] << 8) | temp[2]; // Store y-axis values into gy
+	lsm->gz = (temp[5] << 8) | temp[4]; // Store z-axis values into gz
 }
 
-float calcGyro(struct lsm9ds0 *lsm, int16_t gyro)
+float calc_gyro(struct lsm9ds0 *lsm, int16_t gyro)
 {
 	// Return the gyro raw reading times our pre-calculated DPS / (ADC tick):
-	return lsm_t->gRes * gyro; 
+	return lsm->g_res * gyro; 
 }
 
-float calcAccel(struct lsm9ds0 *lsm, int16_t accel)
+float calc_accel(struct lsm9ds0 *lsm, int16_t accel)
 {
 	// Return the accel raw reading times our pre-calculated g's / (ADC tick):
-	return lsm_t->aRes * accel;
+	return lsm->a_res * accel;
 }
 
-float calcMag(struct lsm9ds0 *lsm, int16_t mag)
+float calc_mag(struct lsm9ds0 *lsm, int16_t mag)
 {
 	// Return the mag raw reading times our pre-calculated Gs / (ADC tick):
-	return lsm_t->mRes * mag;
+	return lsm->m_res * mag;
 }
 
-void setGyroScale(struct lsm9ds0 *lsm, gyro_scale gScl)
+int set_g_scl(struct lsm9ds0 *lsm, int g_scl)
 {
-	// We need to preserve the other bytes in CTRL_REG4_G. So, first read it:
-	uint8_t temp = gReadByte(lsm_t,CTRL_REG4_G);
-	// Then mask out the gyro scale bits:
+	int status;
+	uint8_t temp;
+	
+	/* read CTRL_REG4_G so we don't modify the other the other bits */
+	if ((status = g_read8(lsm, CTRL_REG4_G, &temp)) < 0)
+		return status;
+		
+	/* mask out the gyro scale bits */
 	temp &= 0xFF^(0x3 << 4);
-	// Then shift in our new scale bits:
-	temp |= gScl << 4;
-	// And write the new register value back into CTRL_REG4_G:
-	gWriteByte(lsm_t, CTRL_REG4_G, temp);
 	
-	// We've updated the sensor, but we also need to update our class variables
-	// First update gScale:
-	lsm_t->gScale = gScl;
+	/* shift in our new scale bits */
+	temp |= g_scl << 4;
 	
-	// Then calculate a new gRes, which relies on gScale being set correctly:
-	calcgRes(lsm_t);
+	/* write the new register value back into CTRL_REG4_G */
+	if ((status = g_write8(lsm, CTRL_REG4_G, temp)) < 0)
+		return status;
+	
+	lsm->g_scl = g_scl;
+	
+	/* calculate a new g_res, which relies on g_scl being set correctly */ 
+	calc_g_res(lsm);
+	
+	return lsm->g_scl;
 }
 
-void setAccelScale(struct lsm9ds0 *lsm, accel_scale aScl)
+int set_a_scl(struct lsm9ds0 *lsm, int a_scl)
 {
-	// We need to preserve the other bytes in CTRL_REG2_XM. So, first read it:
-	uint8_t temp = xmReadByte(lsm_t,CTRL_REG2_XM);
-	// Then mask out the accel scale bits:
+	int status;
+	uint8_t temp;
+	
+	/* read CTRL_REG2_AM so we don't modify the other the other bits */
+	if ((status = am_read8(lsm, CTRL_REG2_AM, &temp)) < 0)
+		return status;
+		
+	/* mask out the accel scale bits */
 	temp &= 0xFF^(0x3 << 3);
-	// Then shift in our new scale bits:
-	temp |= aScl << 3;
-	// And write the new register value back into CTRL_REG2_XM:
-	xmWriteByte(lsm_t,CTRL_REG2_XM, temp);
 	
-	// We've updated the sensor, but we also need to update our class variables
-	// First update aScale:
-	lsm_t->aScale = aScl;
+	/* shift in our new scale bits */
+	temp |= a_scl << 3;
 	
-	// Then calculate a new aRes, which relies on aScale being set correctly:
-	calcaRes(lsm_t);
+	/* write the new register value back into CTRL_REG2_AM */
+	if ((status = am_write8(lsm,CTRL_REG2_AM, temp)) < 0)
+		return status;
+	
+	lsm->a_scl = a_scl;
+	
+	/* calculate a new a_res, which relies on a_scl being set correctly */
+	calc_a_res(lsm);
+	
+	return lsm->a_scl;
 }
 
-void setMagScale(struct lsm9ds0 *lsm, mag_scale mScl)
+int set_m_scl(struct lsm9ds0 *lsm, int m_scl)
 {
-	// We need to preserve the other bytes in CTRL_REG6_XM. So, first read it:
-	uint8_t temp = xmReadByte(lsm_t,CTRL_REG6_XM);
-	// Then mask out the mag scale bits:
+	int status;
+	uint8_t temp;
+	
+	/* read CTRL_REG6_AM so we don't modify the other the other bits */
+	if ((status = am_read8(lsm, CTRL_REG6_AM, &temp)) < 0)
+		return status;
+	
+	/* mask out the mag scale bits */
 	temp &= 0xFF^(0x3 << 5);
-	// Then shift in our new scale bits:
-	temp |= mScl << 5;
-	// And write the new register value back into CTRL_REG6_XM:
-	xmWriteByte(lsm_t,CTRL_REG6_XM, temp);
+	
+	/* shift in our new scale bits */
+	temp |= m_scl << 5;
+	
+	/* write the new register value back into CTRL_REG6_AM */
+	if ((status = am_write8(lsm, CTRL_REG6_AM, temp)) < 0)
+		return status;
 	
 	// We've updated the sensor, but we also need to update our class variables
 	// First update mScale:
-	lsm_t->mScale = mScl;
+	lsm->m_scl = m_scl;
 	
-	// Then calculate a new mRes, which relies on mScale being set correctly:
-	calcmRes(lsm_t);
+	/* calculate a new m_res, which relies on m_scl being set correctly */
+	calc_m_res(lsm);
+	
+	return lsm->m_scl;
 }
 
-void setGyroODR(struct lsm9ds0 *lsm, gyro_odr gRate)
+int set_g_odr(struct lsm9ds0 *lsm, int g_rate)
 {
-	// We need to preserve the other bytes in CTRL_REG1_G. So, first read it:
-	uint8_t temp = gReadByte(lsm_t,CTRL_REG1_G);
-	// Then mask out the gyro ODR bits:
-	temp &= 0xFF^(0xF << 4);
-	// Then shift in our new ODR bits:
-	temp |= (gRate << 4);
+	int status;
+	uint8_t temp;
 	
-	// And write the new register value back into CTRL_REG1_G:
-	gWriteByte(lsm_t, CTRL_REG1_G, temp);
+	/* read CTRL_REG1_G so we don't modify the other the other bits */
+	if ((status = g_read8(lsm, CTRL_REG1_G, &temp)) < 0)
+		return status;
+		
+	/* mask out the gyro ODR bits */
+	temp &= 0xFF^(0xF << 4);
+	
+	/* shift in our new ODR bits */
+	temp |= (g_rate << 4);
+	
+	/* write the new register value back into CTRL_REG1_G */
+	if ((status = g_write8(lsm, CTRL_REG1_G, temp)) < 0)
+		return status;
+	
+	return g_rate;
 }
 
-void setAccelODR(struct lsm9ds0 *lsm, accel_odr aRate)
+int set_a_odr(struct lsm9ds0 *lsm, int a_rate)
 {
-	// We need to preserve the other bytes in CTRL_REG1_XM. So, first read it:
-	uint8_t temp = xmReadByte(lsm_t,CTRL_REG1_XM);
-	// Then mask out the accel ODR bits:
+	int status;
+	uint8_t temp;
+	
+	/* read CTRL_REG1_AM so we don't modify the other the other bits */
+	if ((status = am_read8(lsm, CTRL_REG1_AM, &temp)) < 0)
+		return status;
+		
+	/* mask out the accel ODR bits */
 	temp &= 0xFF^(0xF << 4);
-	// Then shift in our new ODR bits:
+	
+	/* shift in our new ODR bits */
 	temp |= (aRate << 4);
-	// And write the new register value back into CTRL_REG1_XM:
-	xmWriteByte(lsm_t,CTRL_REG1_XM, temp);
+	
+	/* write the new register value back into CTRL_REG1_AM */
+	if ((status = am_write8(lsm,CTRL_REG1_AM, temp)) < 0)
+		return status;
+		
+	return a_rate;
 }
 
-void setAccelABW(struct lsm9ds0 *lsm, accel_abw abwRate)
+int set_a_abw(struct lsm9ds0 *lsm, int abw_rate)
 {
-	// We need to preserve the other bytes in CTRL_REG2_XM. So, first read it:
-	uint8_t temp = xmReadByte(lsm_t,CTRL_REG2_XM);
-	// Then mask out the accel ABW bits:
+	int status;
+	uint8_t temp;
+	
+	/* read CTRL_REG2_AM so we don't modify the other the other bits */
+	if ((status = am_read8(lsm, CTRL_REG2_AM, &temp)) < 0)
+		return status;
+		
+	/* mask out the accel ABW bits */
 	temp &= 0xFF^(0x3 << 7);
-	// Then shift in our new ODR bits:
+	
+	/* shift in our new ODR bits */
 	temp |= (abwRate << 7);
-	// And write the new register value back into CTRL_REG2_XM:
-	xmWriteByte(lsm_t,CTRL_REG2_XM, temp);
+	
+	/* write the new register value back into CTRL_REG2_AM */
+	if ((status = am_write8(lsm, CTRL_REG2_AM, temp)) < 0)
+		return status;
+		
+	return abw_rate;
 }
 
-void setMagODR(struct lsm9ds0 *lsm, mag_odr mRate)
+int set_m_odr(struct lsm9ds0 *lsm, int m_rate)
 {
-	// We need to preserve the other bytes in CTRL_REG5_XM. So, first read it:
-	uint8_t temp = xmReadByte(lsm_t,CTRL_REG5_XM);
-	// Then mask out the mag ODR bits:
+	int status;
+	uint8_t temp;
+	
+	/* read CTRL_REG5_AM so we don't modify the other the other bits */
+	if ((status = am_read8(lsm, CTRL_REG5_AM, &temp)) < 0)
+		return status;
+		
+	/* mask out the mag ODR bits */
 	temp &= 0xFF^(0x7 << 2);
-	// Then shift in our new ODR bits:
-	temp |= (mRate << 2);
-	// And write the new register value back into CTRL_REG5_XM:
-	xmWriteByte(lsm_t,CTRL_REG5_XM, temp);
+	
+	/* shift in our new ODR bits */
+	temp |= (m_rate << 2);
+	
+	/* write the new register value back into CTRL_REG5_AM */
+	if ((status = am_write8(lsm, CTRL_REG5_AM, temp)) < 0)
+		return status;
+		
+	return m_rate;
 }
 
 
-void configGyroInt(struct lsm9ds0 *lsm,  uint8_t int1Cfg, uint16_t int1ThsX, uint16_t int1ThsY, uint16_t int1ThsZ, uint8_t duration)
+int config_gyroInt(struct lsm9ds0 *lsm, uint8_t int1_cfg, 
+	uint16_t int1_thsx, uint16_t int1_thsy, uint16_t int1_thsz, uint8_t duration)
 {
-	gWriteByte(lsm_t, INT1_CFG_G, int1Cfg);
-	gWriteByte(lsm_t, INT1_THS_XH_G, (int1ThsX & 0xFF00) >> 8);
-	gWriteByte(lsm_t, INT1_THS_XL_G, (int1ThsX & 0xFF));
-	gWriteByte(lsm_t, INT1_THS_YH_G, (int1ThsY & 0xFF00) >> 8);
-	gWriteByte(lsm_t, INT1_THS_YL_G, (int1ThsY & 0xFF));
-	gWriteByte(lsm_t, INT1_THS_ZH_G, (int1ThsZ & 0xFF00) >> 8);
-	gWriteByte(lsm_t, INT1_THS_ZL_G, (int1ThsZ & 0xFF));
-	if (duration)
-		gWriteByte(lsm_t, INT1_DURATION_G, 0x80 | duration);
-	else
-		gWriteByte(lsm_t, INT1_DURATION_G, 0x00);
+	int status;
+	
+	if ((status = g_write8(lsm, INT1_CFG_G, int1_cfg)) < 0)
+		return status;
+		
+	if ((status = g_write8(lsm, INT1_THS_XH_G, (int1_thsx & 0xFF00) >> 8)) < 0)
+		return status;
+			
+	if ((status = g_write8(lsm, INT1_THS_XL_G, (int1_thsx & 0xFF))) < 0)
+		return status;
+		
+	if ((status = g_write8(lsm, INT1_THS_YH_G, (int1_thsy & 0xFF00) >> 8)) < 0)
+		return status;
+	
+	if ((status = g_write8(lsm, INT1_THS_YL_G, (int1_thsy & 0xFF))) < 0)
+		return status;
+		
+	if ((status = g_write8(lsm, INT1_THS_ZH_G, (int1_thsz & 0xFF00) >> 8)) < 0)
+		return status;
+		
+	if ((status = g_write8(lsm, INT1_THS_ZL_G, (int1_thsz & 0xFF))) < 0)
+		return status;
+		
+	if (duration) {
+		if ((status = g_write8(lsm, INT1_DURATION_G, 0x80 | duration)) < 0)
+			return status;
+	} else {
+		if ((status = g_write8(lsm, INT1_DURATION_G, 0x00)) < 0)
+			return status;
+	}
+	
+	return 0;
 }
 
 
-void calcgRes(struct lsm9ds0 *lsm)
+int calc_g_res(struct lsm9ds0 *lsm)
 {
-	// Possible gyro scales (and their register bit settings) are:
-	// 245 DPS (00), 500 DPS (01), 2000 DPS (10). Here's a bit of an algorithm
-	// to calculate DPS/(ADC tick) based on that 2-bit value:
-	switch (lsm_t->gScale)
-	{
+	/*
+	 * Possible gyro scales (and their register bit settings) are:
+	 * 245 DPS (00), 500 DPS (01), 2000 DPS (10). Here's a bit of an algorithm
+	 * to calculate DPS/(ADC tick) based on that 2-bit value 
+	 */
+	
+	if (lsm == NULL)
+		return -EINVAL;
+	
+	switch (lsm->gScale) {
 	case G_SCALE_245DPS:
-		lsm_t->gRes = 245.0f / 32768.0f;
+		lsm->g_res = 245.0f / 32768.0f;
 		break;
 	case G_SCALE_500DPS:
-		lsm_t->gRes = 500.0f / 32768.0f;
+		lsm->g_res = 500.0f / 32768.0f;
 		break;
 	case G_SCALE_2000DPS:
-		lsm_t->gRes = 2000.0f / 32768.0f;
+		lsm->g_res = 2000.0f / 32768.0f;
 		break;
 	}
+	
+	return 0;
 }
 
-void calcaRes(struct lsm9ds0 *lsm)
+int calc_a_res(struct lsm9ds0 *lsm)
 {
-	// Possible accelerometer scales (and their register bit settings) are:
-	// 2 g (000), 4g (001), 6g (010) 8g (011), 16g (100). Here's a bit of an 
-	// algorithm to calculate g/(ADC tick) based on that 3-bit value:
-	lsm_t->aRes = lsm_t->aScale == A_SCALE_16G ? 16.0f / 32768.0f : 
-		   (((float)lsm_t->aScale + 1.0f) * 2.0f) / 32768.0f;
+	/*
+	 * Possible accelerometer scales (and their register bit settings) are:
+	 * 2 g (000), 4g (001), 6g (010) 8g (011), 16g (100). Here's a bit of an 
+	 * algorithm to calculate g/(ADC tick) based on that 3-bit value
+	 */
+	
+	if (lsm == NULL)
+		return -EINVAL;
+	
+	lsm->a_res = (lsm->a_scl == A_SCALE_16G) ? 16.0f / 32768.0f : 
+		   (((float) lsm->a_scl + 1.0f) * 2.0f) / 32768.0f;
+		   
+	return 0;
 }
 
-void calcmRes(struct lsm9ds0 *lsm)
+int calc_m_res(struct lsm9ds0 *lsm)
 {
-	// Possible magnetometer scales (and their register bit settings) are:
-	// 2 Gs (00), 4 Gs (01), 8 Gs (10) 12 Gs (11). Here's a bit of an algorithm
-	// to calculate Gs/(ADC tick) based on that 2-bit value:
-	lsm_t->mRes = lsm_t->mScale == M_SCALE_2GS ? 2.0f / 32768.0f : 
-	       (float) (lsm_t->mScale << 2) / 32768.0f;
+	/* Possible magnetometer scales (and their register bit settings) are:
+	 * 2 Gs (00), 4 Gs (01), 8 Gs (10) 12 Gs (11). Here's a bit of an algorithm
+	 * to calculate Gs/(ADC tick) based on that 2-bit value
+	 */
+	
+	if (lsm == NULL)
+		return -EINVAL;
+	
+	lsm->m_res = (lsm->m_scl == M_SCALE_2GS) ? 2.0f / 32768.0f : 
+	       (float) (lsm->m_scl << 2) / 32768.0f;
+	       
+	return 0;
 }
 
 /* static functions */
