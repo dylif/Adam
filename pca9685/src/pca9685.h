@@ -32,7 +32,6 @@ struct pca9685 {
 	int fd;
 	unsigned int addr;
 	unsigned int freq;
-	unsigned int autoinc : 1;
 	uint8_t settings;
 	uint8_t sleep;
 	uint8_t wake;

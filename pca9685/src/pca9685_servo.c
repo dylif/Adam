@@ -12,30 +12,26 @@ static int us_to_tick(int us, int hz);
 /* pca9685_servo_new: create and initalize a servo struct */
 int pca9685_servo_new(struct pca9685_servo *servo, struct pca9685 *pca, int pin, int us_min, int us_max)
 {
-	int check;
+	int status;
 
 	/* check struct */
-	if (servo == NULL) {
-		errno = EINVAL;
-		return -1;
-	}
+	if (servo == NULL)
+		return -EINVAL;
 
 	/* set defaults */
 	servo->pca = NULL;
-        servo->us_min = -1;
-        servo->us_max = -1;
+    servo->us_min = -1;
+    servo->us_max = -1;
 	servo->pin = -1;
 	servo->us = -1;
 
 	/* check pca struct */
-	if (pca == NULL) {
-		errno = EINVAL;
-		return -1;
-	}
+	if (pca == NULL)
+		return -EINVAL;
 
 	/* check if pca struct is setup for pwm */
-	if ((check = pca9685_pwm_check(pca)) < 0)
-		return check;	
+	if ((status = pca9685_pwm_check(pca)) < 0)
+		return status;	
 
 	/* validate value of pin and cap at min and max */
 	if (pin > PCA9685_PIN_MAX)
@@ -44,8 +40,8 @@ int pca9685_servo_new(struct pca9685_servo *servo, struct pca9685 *pca, int pin,
 		pin = 0;
 
 	/* check servo min and max */
-	if (us_min < 0 || us_max < 0 || us_max == us_min)
-		return -1;
+	if (us_min < 0 || us_max < 0)
+		return -EDOM;
 	
 	/* write validated values to members */
 	servo->pca = pca;
@@ -59,12 +55,14 @@ int pca9685_servo_new(struct pca9685_servo *servo, struct pca9685 *pca, int pin,
 /* pca9685_servo_write_us: write a microsecond value to a servo struct. returns value written to servo */
 int pca9685_servo_write_us(struct pca9685_servo *servo, int us)
 {
+	int status;
+	
 	/* sanity check */
 	if (servo == NULL || servo->pca == NULL || us < servo->us_min || us > servo->us_max)
-		return (servo->us = -1); /* ensure that us does get set */
+		return (servo->us = -EINVAL); /* ensure that us does get set */
 	
-	if (pca9685_pwm_write(servo->pca, servo->pin, 0, us_to_tick(us, servo->pca->freq)) < 0)
-		return (servo->us = -1); /* ditto */
+	if ((status = pca9685_pwm_write(servo->pca, servo->pin, 0, us_to_tick(us, servo->pca->freq))) < 0)
+		return (servo->us = status); /* ditto */
 
 	servo->us = us;
 

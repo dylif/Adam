@@ -10,20 +10,22 @@
 /* i2c_read_reg8: read a byte from a 8-bit device register */
 int i2c_read_reg8(int fd, int addr, uint8_t reg, uint8_t *buf)
 {
+	int status; 
+	
 	int reg_sz = sizeof(reg);
 	int buf_sz = sizeof(*buf);
 
 	if (fd < 0)
 		return fd;
 		
-	if (ioctl(fd, I2C_SLAVE, addr) < 0)
-		return errno * -1;
+	if ((status = ioctl(fd, I2C_SLAVE, addr)) < 0)
+		return status;
 
 	if (write(fd, &reg, reg_sz) != reg_sz)
-		return errno * -1;
+		return -1;
 
 	if (read(fd, buf, buf_sz) != buf_sz)
-		return errno * -1;
+		return -1;
 
 	return buf_sz;
 }
@@ -31,20 +33,22 @@ int i2c_read_reg8(int fd, int addr, uint8_t reg, uint8_t *buf)
 /* i2c_write_reg8: write a byte to a 8-bit device register */
 int i2c_write_reg8(int fd, int addr, uint8_t reg, uint8_t data)
 {
+	int status;
+	
 	uint8_t buf[2];
 	int buf_sz = sizeof(buf) / sizeof(buf[0]);
 
 	if (fd < 0)
 		return fd;
 		
-	if (ioctl(fd, I2C_SLAVE, addr) < 0)
-		return errno * -1;
+	if ((status = ioctl(fd, I2C_SLAVE, addr)) < 0)
+		return status;
 
 	buf[0] = reg;
 	buf[1] = data;
 
 	if (write(fd, buf, buf_sz) != buf_sz)
-		return errno * -1;
+		return -1;
 
 	return buf_sz;
 }
@@ -57,12 +61,12 @@ int i2c_read_reg16(int fd, int addr, uint8_t reg, uint16_t *buf)
 	uint8_t byte_buf[2];
 	int byte_buf_sz = sizeof(byte_buf) / sizeof(byte_buf[0]);
 	
-	if ((status = i2c_read(fd, addr, reg, byte_buf, byte_buf)) < 0)
+	if ((status = i2c_read(fd, addr, reg, byte_buf, byte_buf_sz)) < 0)
 		return status;
 
 	*buf = (((uint16_t) byte_buf[0]) << 8) | ((uint16_t) byte_buf[1]);
 	
-	return byte_buf;
+	return byte_buf_sz;
 }
 
 /* i2c_write_reg16: write a 16-bit int to a 8-bit device register */
@@ -103,7 +107,7 @@ int i2c_write(int fd, int addr, uint8_t base_reg, uint8_t *data, size_t data_sz)
 	
 	int i;
 	for (i = 0; i < data_sz; ++i) {
-		if ((status = i2c_write_reg8(fd, addr, base_reg + i, data[i]) < 0)
+		if ((status = i2c_write_reg8(fd, addr, base_reg + i, data[i])) < 0)
 			return status;
 	}
 	
