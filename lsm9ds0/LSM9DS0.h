@@ -182,8 +182,8 @@ struct lsm9ds0
 {	
 	int fd;
 		
-	uint8_t g_addr;
-	uint8_t am_addr;
+	unsigned int g_addr;
+	unsigned int am_addr;
 	
 	// gScale, aScale, and mScale store the current scale range for each 
 	// sensor. Should be updated whenever that value changes.
@@ -407,53 +407,6 @@ void initAccel( LSM9DS0_t* lsm_t );
 //	- INT_CTRL_REG_M = 0x09: Interrupt active-high. Enable interrupts.
 void initMag( LSM9DS0_t* lsm_t );
 
-// gReadByte() -- Reads a byte from a specified gyroscope register.
-// Input:
-// 	- subAddress = Register to be read from.
-// Output:
-// 	- An 8-bit value read from the requested address.
-uint8_t gReadByte( LSM9DS0_t* lsm_t, uint8_t subAddress);
-
-// gReadBytes() -- Reads a number of bytes -- beginning at an address
-// and incrementing from there -- from the gyroscope.
-// Input:
-// 	- subAddress = Register to be read from.
-// 	- * dest = A pointer to an array of uint8_t's. Values read will be
-//		stored in here on return.
-//	- count = The number of bytes to be read.
-// Output: No value is returned, but the `dest` array will store
-// 	the data read upon exit.
-void gReadBytes( LSM9DS0_t* lsm_t, uint8_t subAddress, uint8_t * dest, uint8_t count);
-
-// gWriteByte() -- Write a byte to a register in the gyroscope.
-// Input:
-//	- subAddress = Register to be written to.
-//	- data = data to be written to the register.
-void gWriteByte( LSM9DS0_t* lsm_t, uint8_t subAddress, uint8_t data);
-
-// xmReadByte() -- Read a byte from a register in the accel/mag sensor
-// Input:
-//	- subAddress = Register to be read from.
-// Output:
-//	- An 8-bit value read from the requested register.
-uint8_t xmReadByte( LSM9DS0_t* lsm_t, uint8_t subAddress);
-
-// xmReadBytes() -- Reads a number of bytes -- beginning at an address
-// and incrementing from there -- from the accelerometer/magnetometer.
-// Input:
-// 	- subAddress = Register to be read from.
-// 	- * dest = A pointer to an array of uint8_t's. Values read will be
-//		stored in here on return.
-//	- count = The number of bytes to be read.
-// Output: No value is returned, but the `dest` array will store
-// 	the data read upon exit.
-void xmReadBytes( LSM9DS0_t* lsm_t, uint8_t subAddress, uint8_t * dest, uint8_t count);
-
-// xmWriteByte() -- Write a byte to a register in the accel/mag sensor.
-// Input:
-//	- subAddress = Register to be written to.
-//	- data = data to be written to the register.
-void xmWriteByte( LSM9DS0_t* lsm_t, uint8_t subAddress, uint8_t data);
 
 // calcgRes() -- Calculate the resolution of the gyroscope.
 // This function will set the value of the gRes variable. gScale must

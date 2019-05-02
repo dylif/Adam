@@ -12,7 +12,7 @@ static struct lsm9ds0_settings settings_def =
 	M_ODR_50
 };
 
-uint16_t lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings, int fd, uint8_t g_addr, uint8_t am_addr;)
+uint16_t lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings, int fd, unsigned int g_addr, unsigned int am_addr)
 {
 	int status;
 	
@@ -147,7 +147,7 @@ int lsm9ds0_mag_init(struct lsm9ds0 *lsm)
 	if ((status = am_write8(lsm, CTRL_REG7_AM, 0x00)) < 0)
 		return status;
 	
-	/* Magnetometer data ready on INT2_XM (0x08) */
+	/* Magnetometer data ready on INT2_AM (0x08) */
 	if ((status = am_write8(lsm, CTRL_REG4_AM, 0x04)) < 0)
 		return status;
 	
@@ -158,113 +158,199 @@ int lsm9ds0_mag_init(struct lsm9ds0 *lsm)
 	return 0;
 }
 
-// This is a function that uses the FIFO to accumulate sample of accelerometer and gyro data, average
-// them, scales them to  gs and deg/s, respectively, and then passes the biases to the main sketch
-// for subtraction from all subsequent data. There are no gyro and accelerometer bias registers to store
-// the data as there are in the ADXL345, a precursor to the LSM9DS0, or the MPU-9150, so we have to
-// subtract the biases ourselves. This results in a more accurate measurement in general and can
-// remove errors due to imprecise or varying initial placement. Calibration of sensor data in this manner
-// is good practice.
+/* This is a function that uses the FIFO to accumulate sample of accelerometer and gyro data, average
+ * them, scales them to  gs and deg/s, respectively, and then passes the biases to the main sketch
+ * for subtraction from all subsequent data. There are no gyro and accelerometer bias registers to store
+ * the data as there are in the ADXL345, a precursor to the LSM9DS0, or the MPU-9150, so we have to
+ * subtract the biases ourselves. This results in a more accurate measurement in general and can
+ * remove errors due to imprecise or varying initial placement. Calibration of sensor data in this manner
+ * is good practice.
+ * 
+ * NOTE: gbias and abias should be float arrays, each 3 floats in size
+ */
 int lsm9ds0_cal(struct lsm9ds0 *lsm, float *gbias, float *abias)
 {  
-  uint8_t data[6] = {0, 0, 0, 0, 0, 0};
-  int16_t gyro_bias[3] = {0, 0, 0};
-  int16_t accel_bias[3] = {0, 0, 0};
-  	
-  int samples, ii;
-  
-  // First get gyro bias
-  uint8_t c = gReadByte(lsm, CTRL_REG5_G);
-  g_write8(lsm, CTRL_REG5_G, c | 0x40);         	// Enable gyro FIFO  
-  delay(20);                                 	// Wait for change to take effect
-  g_write8(lsm, FIFO_CTRL_REG_G, 0x20 | 0x1F);  	// Enable gyro FIFO stream mode and set watermark at 32 samples
-  delay(1000);  								// delay 1000 milliseconds to collect FIFO samples
-  
-  samples = (g_read8(lsm,FIFO_SRC_REG_G) & 0x1F); // Read number of stored samples
+	int status;
+	
+	/* declare and zero the arrays */
+	uint8_t data[6] = {0, 0, 0, 0, 0, 0};
+	int16_t gyro_bias[3] = {0, 0, 0};
+	int16_t accel_bias[3] = {0, 0, 0};
+	uint8_t temp;
+	uint8_t c;
+	
+	int samples 
+	int i;
 
-  for(ii = 0; ii < samples ; ii++) {            // Read the gyro data stored in the FIFO
-    gReadBytes(lsm,OUT_X_L_G,  &data[0], 6);
-    gyro_bias[0] += (((int16_t)data[1] << 8) | data[0]);
-    gyro_bias[1] += (((int16_t)data[3] << 8) | data[2]);
-    gyro_bias[2] += (((int16_t)data[5] << 8) | data[4]);
-  }  
+	size_t data_sz = sizeof(data) / sizeof(data[0]);
 
-  gyro_bias[0] /= samples; 						// average the data
-  gyro_bias[1] /= samples; 
-  gyro_bias[2] /= samples; 
-  
-  gbias[0] = (float) gyro_bias[0] * lsm->g_res; 			 // Properly scale the data to get deg/s
-  gbias[1] = (float) gyro_bias[1] * lsm->g_res;
-  gbias[2] = (float) gyro_bias[2] * lsm->g_res;
-  
-  c = gReadByte(lsm,CTRL_REG5_G);
-  g_write8(lsm, CTRL_REG5_G, c & ~0x40);  			// Disable gyro FIFO  
-  delay(20);
-  g_write8(lsm, FIFO_CTRL_REG_G, 0x00);   			// Enable gyro bypass mode
-  
+	/* get gyro bias */
+	if ((status = g_read8(lsm, CTRL_REG5_G, &c)) < 0)
+		return status;
+	
+	/* enable gyro FIFO and wait */
+	if ((status = g_write8(lsm, CTRL_REG5_G, c | 0x40)) < 0)
+		return status;
+	delay(20);
+	
+	/* enable gyro FIFO stream mode, set watermark at 32 samples and delay to collect samples */
+	if ((status = g_write8(lsm, FIFO_CTRL_REG_G, 0x20 | 0x1F)) < 0)
+		return status;
+	delay(1000);  								
+	
+	/* read number of stored samples */
+	if ((status = g_read8(lsm, FIFO_SRC_REG_G, &temp)) < 0)
+		return status;
+	samples = (temp & 0x1F); 
 
-  //  Now get the accelerometer biases
-  c = am_read8(lsm,CTRL_REG0_XM);
-  am_write8(lsm,CTRL_REG0_XM, c | 0x40);      	// Enable accelerometer FIFO  
-  delay(20);                                	// Wait for change to take effect
-  am_write8(lsm,FIFO_CTRL_REG, 0x20 | 0x1F);  	// Enable accelerometer FIFO stream mode and set watermark at 32 samples
-  delay(1000); 	 								// delay 1000 milliseconds to collect FIFO samples
+	/* read the gyro data stored in the FIFO */
+	for(i = 0; i < samples; ++i) {            
+		if ((status = g_read(lsm, OUT_X_L_G, &data[0], data_sz)) < 0) 
+			return status;
+			
+		gyro_bias[0] += (((int16_t) data[1] << 8) | data[0]);
+		gyro_bias[1] += (((int16_t) data[3] << 8) | data[2]);
+		gyro_bias[2] += (((int16_t) data[5] << 8) | data[4]);
+	}  
+	
+	/* average the data */
+	gyro_bias[0] /= samples; 						
+	gyro_bias[1] /= samples; 
+	gyro_bias[2] /= samples; 
+	
+	/* Properly scale the data to get deg/s */
+	gbias[0] = (float) gyro_bias[0] * lsm->g_res; 			 
+	gbias[1] = (float) gyro_bias[1] * lsm->g_res;
+	gbias[2] = (float) gyro_bias[2] * lsm->g_res;
+	
+	/* Disable gyro FIFO, delay, and enable gyro bypass mode */
+	if ((status = g_read8(lsm, CTRL_REG5_G, &c)) < 0)
+		return status;
+	if ((status = g_write8(lsm, CTRL_REG5_G, c & ~0x40)) < 0)
+		return status;   
+	delay(20);
+	if ((status = g_write8(lsm, FIFO_CTRL_REG_G, 0x00)) < 0)
+		return status;
 
-  samples = (am_read8(lsm,FIFO_SRC_REG) & 0x1F); 	// Read number of stored accelerometer samples
-
-   for(ii = 0; ii < samples ; ii++) {          	// Read the accelerometer data stored in the FIFO
-    xmReadBytes(lsm,OUT_X_L_A, &data[0], 6);
-    accel_bias[0] += (((int16_t)data[1] << 8) | data[0]);
-    accel_bias[1] += (((int16_t)data[3] << 8) | data[2]);
-    accel_bias[2] += (((int16_t)data[5] << 8) | data[4]) - (int16_t)(1.0f/lsm->a_res); // Assumes sensor facing up!
-  }  
-
-  accel_bias[0] /= samples; // average the data
-  accel_bias[1] /= samples; 
-  accel_bias[2] /= samples; 
-  
-  abias[0] = (float) accel_bias[0] * lsm->a_res; // Properly scale data to get gs
-  abias[1] = (float) accel_bias[1] * lsm->a_res;
-  abias[2] = (float) accel_bias[2] * lsm->a_res;
-
-  c = am_read8(lsm,CTRL_REG0_XM);
-  am_write8(lsm, CTRL_REG0_XM, c & ~0x40);    // Disable accelerometer FIFO  
-  delay(20);
-  am_write8(lsm, FIFO_CTRL_REG, 0x00);       // Enable accelerometer bypass mode
+	/* get the accelerometer biases */
+	if ((status = am_read8(lsm, CTRL_REG0_AM, &c)) < 0)
+		return status;
+		
+	/* enable accelerometer FIFO and wait */
+	if ((status = am_write8(lsm,CTRL_REG0_AM, c | 0x40)) < 0)
+		return status;
+	delay(20); 
+	
+	/* enable accelerometer FIFO stream mode, set watermark at 32 samples and delay to collect samples */
+	if ((status = am_write8(lsm,FIFO_CTRL_REG, 0x20 | 0x1F)) < 0)
+			return status;
+	delay(1000);
+	
+	/* read number of stored samples */
+	if ((status = am_read8(lsm, FIFO_SRC_REG, &temp)) < 0)
+		return status;
+	samples = (temp & 0x1F);
+	
+	/* read the accelerometer data stored in the FIFO
+	 * NOTE: assumes sensor facing up!
+	 */
+	for(i = 0; i < samples; ++i) {          	
+		if ((status = am_read(lsm, OUT_X_L_A, &data[0], data_sz)) < 0)
+			return status;
+		accel_bias[0] += (((int16_t) data[1] << 8) | data[0]);
+		accel_bias[1] += (((int16_t) data[3] << 8) | data[2]);
+		accel_bias[2] += (((int16_t) data[5] << 8) | data[4]) - (int16_t)(1.0f/lsm->a_res); 
+	}  
+	
+	/* average the data */
+	accel_bias[0] /= samples; 
+	accel_bias[1] /= samples; 
+	accel_bias[2] /= samples; 
+	
+	/* properly scale data to get gs */
+	abias[0] = (float) accel_bias[0] * lsm->a_res; 
+	abias[1] = (float) accel_bias[1] * lsm->a_res;
+	abias[2] = (float) accel_bias[2] * lsm->a_res;
+	
+	/* disable accelerometer FIFO, wait and enable accelerometer bypass mode */
+	if ((status = am_read8(lsm,CTRL_REG0_AM)) < 0)
+		return status;
+	if ((status = am_write8(lsm, CTRL_REG0_AM, c & ~0x40)) < 0)
+		return status;
+	delay(20);
+	if ((status = am_write8(lsm, FIFO_CTRL_REG, 0x00)) < 0)
+		return status;
+		
+	return 0;
 }
 
-int LSM9DS0_readAccel(struct lsm9ds0 *lsm)
+int lsm9ds0_accel_read(struct lsm9ds0 *lsm)
 {
-	uint8_t temp[6]; // We'll read six bytes from the accelerometer into temp	
-	xmReadBytes(lsm,OUT_X_L_A, temp, 6); // Read 6 bytes, beginning at OUT_X_L_A
-	lsm->ax = (temp[1] << 8) | temp[0]; // Store x-axis values into ax
-	lsm->ay = (temp[3] << 8) | temp[2]; // Store y-axis values into ay
-	lsm->az = (temp[5] << 8) | temp[4]; // Store z-axis values into az
+	int status;
+	
+	/* declare, zero and get size of array */
+	uint8_t temp[6] = {0, 0, 0, 0, 0, 0};
+	size_t temp_sz = sizeof(temp) / sizeof(temp[0]);
+	
+	/* read 6 bytes, beginning at OUT_X_L_A */
+	if ((status = am_read(lsm, OUT_X_L_A, temp, temp_sz)) < 0)
+		return status;
+	
+	/* x-axis values into ax, y-axis values into ay, z-axis values into az */
+	lsm->ax = (temp[1] << 8) | temp[0];
+	lsm->ay = (temp[3] << 8) | temp[2];
+	lsm->az = (temp[5] << 8) | temp[4];
 }
 
-int LSM9DS0_readMag(struct lsm9ds0 *lsm)
+int lsm9ds0_mag_read(struct lsm9ds0 *lsm)
 {
-	uint8_t temp[6]; // We'll read six bytes from the mag into temp	
-	xmReadBytes(lsm,OUT_X_L_M, temp, 6); // Read 6 bytes, beginning at OUT_X_L_M
-	lsm->mx = (temp[1] << 8) | temp[0]; // Store x-axis values into mx
-	lsm->my = (temp[3] << 8) | temp[2]; // Store y-axis values into my
-	lsm->mz = (temp[5] << 8) | temp[4]; // Store z-axis values into mz
+	int status;
+	
+	/* declare, zero and get size of array */
+	uint8_t temp[6] = {0, 0, 0, 0, 0, 0};
+	size_t temp_sz = sizeof(temp) / sizeof(temp[0]);
+	
+	/* read 6 bytes, beginning at OUT_X_L_M */
+	if ((status = am_read(lsm, OUT_X_L_M, temp, temp_sz)) < 0)
+		return status;
+	
+	/* x-axis values into mx, y-axis values into my, and z-axis values into mz */
+	lsm->mx = (temp[1] << 8) | temp[0]; 
+	lsm->my = (temp[3] << 8) | temp[2];
+	lsm->mz = (temp[5] << 8) | temp[4];
 }
 
-int LSM9DS0_readTemp(struct lsm9ds0 *lsm)
+int lsm9ds0_temp_read(struct lsm9ds0 *lsm)
 {
-	uint8_t temp[2]; // We'll read two bytes from the temperature sensor into temp	
-	xmReadBytes(lsm,OUT_TEMP_L_XM, temp, 2); // Read 2 bytes, beginning at OUT_TEMP_L_M
-	lsm->temperature = (((int16_t) temp[1] << 12) | temp[0] << 4 ) >> 4; // Temperature is a 12-bit signed integer
+	int status;
+	
+	/* declare, zero and get size of array */
+	uint8_t temp[2] = {0, 0};
+	size_t temp_sz = sizeof(temp) / sizeof(temp[0]);	
+	
+	/* read 2 bytes, beginning at OUT_TEMP_L_AM */
+	if ((status = am_read(lsm, OUT_TEMP_L_AM, temp, temp_sz)) < 0)
+		return status;
+		
+	lsm->temp = (((int16_t) temp[1] << 12) | temp[0] << 4 ) >> 4; // Temperature is a 12-bit signed integer
 }
 
-int LSM9DS0_readGyro(struct lsm9ds0 *lsm)
+int lsm9ds0_gyro_read(struct lsm9ds0 *lsm)
 {
-	uint8_t temp[6]; // We'll read six bytes from the gyro into temp
-	gReadBytes(lsm,OUT_X_L_G, temp, 6); // Read 6 bytes, beginning at OUT_X_L_G
-	lsm->gx = (temp[1] << 8) | temp[0]; // Store x-axis values into gx
-	lsm->gy = (temp[3] << 8) | temp[2]; // Store y-axis values into gy
-	lsm->gz = (temp[5] << 8) | temp[4]; // Store z-axis values into gz
+	int status;
+	
+	/* declare, zero and get size of array */
+	uint8_t temp[6];
+	size_t temp_sz = sizeof(temp) / sizeof(temp[0]);
+	
+	/* Read 6 bytes, beginning at OUT_X_L_G */
+	if ((status = g_read(lsm, OUT_X_L_G, temp, temp_sz)) < 0)
+		return status;
+	
+	/* x-axis values into gx, y-axis values into gy, z-axis values into gz */
+	lsm->gx = (temp[1] << 8) | temp[0];
+	lsm->gy = (temp[3] << 8) | temp[2];
+	lsm->gz = (temp[5] << 8) | temp[4];
 }
 
 float calc_gyro(struct lsm9ds0 *lsm, int16_t gyro)
@@ -358,8 +444,6 @@ int set_m_scl(struct lsm9ds0 *lsm, int m_scl)
 	if ((status = am_write8(lsm, CTRL_REG6_AM, temp)) < 0)
 		return status;
 	
-	// We've updated the sensor, but we also need to update our class variables
-	// First update mScale:
 	lsm->m_scl = m_scl;
 	
 	/* calculate a new m_res, which relies on m_scl being set correctly */
@@ -457,7 +541,7 @@ int set_m_odr(struct lsm9ds0 *lsm, int m_rate)
 }
 
 
-int config_gyroInt(struct lsm9ds0 *lsm, uint8_t int1_cfg, 
+int lsm9ds0_gyro_cfg_int(struct lsm9ds0 *lsm, uint8_t int1_cfg, 
 	uint16_t int1_thsx, uint16_t int1_thsy, uint16_t int1_thsz, uint8_t duration)
 {
 	int status;
