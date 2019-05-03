@@ -165,10 +165,8 @@ int lsm9ds0_mag_init(struct lsm9ds0 *lsm)
  * subtract the biases ourselves. This results in a more accurate measurement in general and can
  * remove errors due to imprecise or varying initial placement. Calibration of sensor data in this manner
  * is good practice.
- * 
- * NOTE: gbias and abias should be float arrays, each 3 floats in size
  */
-int lsm9ds0_cal(struct lsm9ds0 *lsm, float *gbias, float *abias)
+int lsm9ds0_cal(struct lsm9ds0 *lsm)
 {  
 	int status;
 	
@@ -219,9 +217,9 @@ int lsm9ds0_cal(struct lsm9ds0 *lsm, float *gbias, float *abias)
 	gyro_bias[2] /= samples; 
 	
 	/* Properly scale the data to get deg/s */
-	gbias[0] = (float) gyro_bias[0] * lsm->g_res; 			 
-	gbias[1] = (float) gyro_bias[1] * lsm->g_res;
-	gbias[2] = (float) gyro_bias[2] * lsm->g_res;
+	lsm->g_bias[0] = (float) gyro_bias[0] * lsm->g_res; 			 
+	lsm->g_bias[1] = (float) gyro_bias[1] * lsm->g_res;
+	lsm->g_bias[2] = (float) gyro_bias[2] * lsm->g_res;
 	
 	/* Disable gyro FIFO, delay, and enable gyro bypass mode */
 	if ((status = g_read8(lsm, CTRL_REG5_G, &c)) < 0)
@@ -268,9 +266,9 @@ int lsm9ds0_cal(struct lsm9ds0 *lsm, float *gbias, float *abias)
 	accel_bias[2] /= samples; 
 	
 	/* properly scale data to get gs */
-	abias[0] = (float) accel_bias[0] * lsm->a_res; 
-	abias[1] = (float) accel_bias[1] * lsm->a_res;
-	abias[2] = (float) accel_bias[2] * lsm->a_res;
+	lsm->a_bias[0] = (float) accel_bias[0] * lsm->a_res; 
+	lsm->a_bias[1] = (float) accel_bias[1] * lsm->a_res;
+	lsm->a_bias[2] = (float) accel_bias[2] * lsm->a_res;
 	
 	/* disable accelerometer FIFO, wait and enable accelerometer bypass mode */
 	if ((status = am_read8(lsm,CTRL_REG0_AM)) < 0)
