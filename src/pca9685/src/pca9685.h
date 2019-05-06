@@ -38,9 +38,7 @@ struct pca9685 {
 	uint8_t restart;
 };
 
-/* declare functions and useful macros */
-#define delay(ms) usleep(ms * 1000)
-
+/* declare functions */
 extern int pca9685_new(struct pca9685 *pca, int fd, unsigned int addr);
 extern int pca9685_pwm_init(struct pca9685 *pca, unsigned int freq);
 extern int pca9685_pwm_reset(struct pca9685 *pca);

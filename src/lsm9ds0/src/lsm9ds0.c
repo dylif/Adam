@@ -1,6 +1,18 @@
+#include <stdint.h>
 #include <errno.h>
+#include <basic_i2c.h>
 
-#include "LSM9DS0.h"
+#include "lsm9ds0.h"
+
+static int g_read8(struct lsm9ds0 *lsm, uint8_t reg, uint8_t *buf);
+static int g_write8(struct lsm9ds0 *lsm, uint8_t reg, uint8_t data);
+static int g_read(struct lsm9ds0 *lsm, uint8_t base_reg, uint8_t *buf, size_t buf_sz);
+static int g_write(struct lsm9ds0 *lsm, uint8_t base_reg, uint8_t *data, size_t data_sz);
+static int am_read8(struct lsm9ds0 *lsm, uint8_t reg, uint8_t *buf);
+static int am_write8(struct lsm9ds0 *lsm, uint8_t reg, uint8_t data);
+static int am_read(struct lsm9ds0 *lsm, uint8_t base_reg, uint8_t *buf, size_t buf_sz);
+static int am_write(struct lsm9ds0 *lsm, uint8_t base_reg, uint8_t *data, size_t data_sz);
+
 
 static struct lsm9ds0_settings settings_def =
 {
@@ -23,7 +35,7 @@ uint16_t lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings, int
 		return -EINVAL;
 	
 	if (settings == NULL)
-		settings = &LMS_Device_Defaults;
+		settings = &settings_def;
 		
 	if (fd < 0)
 		return fd;
@@ -56,10 +68,10 @@ uint16_t lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings, int
 	if ((status = lsm9ds0_gyro_init(lsm)) < 0)
 		return status;
 	/* Set the gyro output data rate and bandwidth. */
-	if ((status = setGyroODR(lsm, settings->g_odr)) < 0)
+	if ((status = set_g_odr(lsm, settings->g_odr)) < 0)
 		return status;
 	/* Set the gyro range */
-	if ((status = setGyroScale(lsm, lsm->g_scl)) < 0)
+	if ((status = set_g_scl(lsm, lsm->g_scl)) < 0)
 		return status;
 	
 	/* Accelerometer init: */
@@ -75,6 +87,7 @@ uint16_t lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings, int
 	// Once everything is initialized, return the WHO_AM_I registers we read:
 	return (am_test << 8) | g_test;
 }
+
 
 int lsm9ds0_gyro_init(struct lsm9ds0 *lsm)
 {
@@ -107,6 +120,7 @@ int lsm9ds0_gyro_init(struct lsm9ds0 *lsm)
 	*/
 }
 
+
 int lsm9ds0_accel_init(struct lsm9ds0 *lsm)
 {
 	int status;
@@ -128,7 +142,6 @@ int lsm9ds0_accel_init(struct lsm9ds0 *lsm)
 		
 	return 0;
 }
-
 
 
 int lsm9ds0_mag_init(struct lsm9ds0 *lsm)
@@ -177,7 +190,7 @@ int lsm9ds0_cal(struct lsm9ds0 *lsm)
 	uint8_t temp;
 	uint8_t c;
 	
-	int samples 
+	int samples; 
 	int i;
 
 	size_t data_sz = sizeof(data) / sizeof(data[0]);
@@ -271,7 +284,7 @@ int lsm9ds0_cal(struct lsm9ds0 *lsm)
 	lsm->a_bias[2] = (float) accel_bias[2] * lsm->a_res;
 	
 	/* disable accelerometer FIFO, wait and enable accelerometer bypass mode */
-	if ((status = am_read8(lsm,CTRL_REG0_AM)) < 0)
+	if ((status = am_read8(lsm, CTRL_REG0_AM, &c)) < 0)
 		return status;
 	if ((status = am_write8(lsm, CTRL_REG0_AM, c & ~0x40)) < 0)
 		return status;
@@ -298,6 +311,8 @@ int lsm9ds0_accel_read(struct lsm9ds0 *lsm)
 	lsm->ax = (temp[1] << 8) | temp[0];
 	lsm->ay = (temp[3] << 8) | temp[2];
 	lsm->az = (temp[5] << 8) | temp[4];
+	
+	return 0;
 }
 
 int lsm9ds0_mag_read(struct lsm9ds0 *lsm)
@@ -316,6 +331,8 @@ int lsm9ds0_mag_read(struct lsm9ds0 *lsm)
 	lsm->mx = (temp[1] << 8) | temp[0]; 
 	lsm->my = (temp[3] << 8) | temp[2];
 	lsm->mz = (temp[5] << 8) | temp[4];
+	
+	return 0;
 }
 
 int lsm9ds0_temp_read(struct lsm9ds0 *lsm)
@@ -331,6 +348,8 @@ int lsm9ds0_temp_read(struct lsm9ds0 *lsm)
 		return status;
 		
 	lsm->temp = (((int16_t) temp[1] << 12) | temp[0] << 4 ) >> 4; // Temperature is a 12-bit signed integer
+	
+	return 0;
 }
 
 int lsm9ds0_gyro_read(struct lsm9ds0 *lsm)
@@ -349,6 +368,8 @@ int lsm9ds0_gyro_read(struct lsm9ds0 *lsm)
 	lsm->gx = (temp[1] << 8) | temp[0];
 	lsm->gy = (temp[3] << 8) | temp[2];
 	lsm->gz = (temp[5] << 8) | temp[4];
+	
+	return 0;
 }
 
 float calc_gyro(struct lsm9ds0 *lsm, int16_t gyro)

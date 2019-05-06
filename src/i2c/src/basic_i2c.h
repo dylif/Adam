@@ -1,4 +1,6 @@
+#include <stdlib.h>
 #include <stdint.h>
+#include <unistd.h>
 
 #ifndef BASIC_I2C_H
 #define BASIC_I2C_H
@@ -7,6 +9,8 @@
 #ifndef DEVICE_I2C
 #define DEVICE_I2C "/dev/i2c-1"
 #endif
+
+#define delay(ms) usleep(ms * 1000)
 
 extern int i2c_read_reg8(int fd, int addr, uint8_t reg, uint8_t *buf);
 extern int i2c_write_reg8(int fd, int addr, uint8_t reg, uint8_t data);

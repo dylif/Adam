@@ -4,7 +4,7 @@
 #ifndef LSM9DS0_H
 #define LSM9DS0_H
 
-/* LSM9DS0 Gyro Registers */
+/* lsm9ds0 gyro registers */
 #define WHO_AM_I_G			0x0F
 #define CTRL_REG1_G			0x20
 #define CTRL_REG2_G			0x21
@@ -31,7 +31,7 @@
 #define INT1_THS_ZL_G		0x37
 #define INT1_DURATION_G		0x38
 
-/* LSM9DS0 Accel/Magneto (XM) Registers */
+/* lsm9ds0 accel/mag (AM) registers */
 #define OUT_TEMP_L_AM		0x05
 #define OUT_TEMP_H_AM		0x06
 #define STATUS_REG_M		0x07
@@ -99,7 +99,7 @@ enum gyro_scale
 	G_SCALE_245DPS,		
 	G_SCALE_500DPS,
 	G_SCALE_2000DPS,
-}
+};
 
 /* accel_scale defines all possible FSR's of the accelerometer:
  * 000:  2g
@@ -115,7 +115,7 @@ enum accel_scale
 	A_SCALE_6G,	
 	A_SCALE_8G,	
 	A_SCALE_16G	
-}
+};
 
 /* mag_scale defines all possible FSR's of the magnetometer:
  * 00:  2Gs
@@ -129,7 +129,7 @@ enum mag_scale
 	M_SCALE_4GS, 	
 	M_SCALE_8GS,	
 	M_SCALE_12GS,	
-}
+};
 
 /* gyro_odr defines all possible data rate/bandwidth combos of the gyro:
  * ODR (Hz) --- Cutoff
@@ -166,7 +166,7 @@ enum gyro_odr
 	G_ODR_760_BW_35  = 0xD,    
 	G_ODR_760_BW_50  = 0xE,    
 	G_ODR_760_BW_100 = 0xF,    
-}
+};
 
 /* accel_oder defines all possible output data rates of the accelerometer:
  * Power-down mode (0x0)
@@ -194,7 +194,7 @@ enum accel_odr
 	A_ODR_400,		
 	A_ODR_800,		
 	A_ODR_1600		
-}
+};
 
 /* accel_abw defines all possible anti-aliasing filter rates of the accelerometer:
  * 773 Hz (0x0)
@@ -208,7 +208,7 @@ enum accel_abw
 	A_ABW_194,		
 	A_ABW_362,		
 	A_ABW_50,		
-}
+};
 
 
 /* mag_oder defines all possible output data rates of the magnetometer:
@@ -227,9 +227,9 @@ enum mag_odr
 	M_ODR_25,	
 	M_ODR_50,	
 	M_ODR_100,	
-}
+};
 
-
+/* declare structs */
 struct lsm9ds0
 {	
 	int fd;
@@ -261,11 +261,7 @@ struct lsm9ds0
     /* arrays to store gyro and accel biases */
 	float 	a_bias[3];
     float 	g_bias[3];
-}
-
-
-void LSM9DS0_Init( LSM9DS0_t* lsm_t, interface_mode interface, uint8_t gAddr, uint8_t xmAddr );
-
+};
 
 struct lsm9ds0_settings
 {
@@ -275,9 +271,32 @@ struct lsm9ds0_settings
 	int g_odr; 
 	int a_odr; 
 	int m_odr;
-}
-uint16_t LSM9DS0_begin( LSM9DS0_t* lsm_t, LMS9DS0_Init_t* init_t );
+};
 
-
+/* declare functions */
+uint16_t lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings, int fd, unsigned int g_addr, unsigned int am_addr);
+int lsm9ds0_gyro_init(struct lsm9ds0 *lsm);
+int lsm9ds0_gyro_read(struct lsm9ds0 *lsm);
+int lsm9ds0_accel_init(struct lsm9ds0 *lsm);
+int lsm9ds0_accel_read(struct lsm9ds0 *lsm);
+int lsm9ds0_mag_init(struct lsm9ds0 *lsm);
+int lsm9ds0_mag_read(struct lsm9ds0 *lsm);
+int lsm9ds0_temp_read(struct lsm9ds0 *lsm);
+int lsm9ds0_cal(struct lsm9ds0 *lsm);
+float calc_gyro(struct lsm9ds0 *lsm, int16_t gyro);
+float calc_accel(struct lsm9ds0 *lsm, int16_t accel);
+float calc_mag(struct lsm9ds0 *lsm, int16_t mag);
+int set_g_scl(struct lsm9ds0 *lsm, int g_scl);
+int set_a_scl(struct lsm9ds0 *lsm, int a_scl);
+int set_m_scl(struct lsm9ds0 *lsm, int m_scl);
+int set_g_odr(struct lsm9ds0 *lsm, int g_rate);
+int set_a_odr(struct lsm9ds0 *lsm, int a_rate);
+int set_a_abw(struct lsm9ds0 *lsm, int abw_rate);
+int set_m_odr(struct lsm9ds0 *lsm, int m_rate);
+int lsm9ds0_gyro_cfg_int(struct lsm9ds0 *lsm, uint8_t int1_cfg, 
+	uint16_t int1_thsx, uint16_t int1_thsy, uint16_t int1_thsz, uint8_t duration);
+int calc_g_res(struct lsm9ds0 *lsm);
+int calc_a_res(struct lsm9ds0 *lsm);
+int calc_m_res(struct lsm9ds0 *lsm);
 
 #endif /* LSM9DS0_H */
