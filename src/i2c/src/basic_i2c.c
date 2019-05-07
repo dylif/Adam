@@ -1,6 +1,7 @@
 #include <stdint.h>
 
 #include <unistd.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <linux/i2c-dev.h>
@@ -22,10 +23,10 @@ int i2c_read_reg8(int fd, int addr, uint8_t reg, uint8_t *buf)
 		return status;
 
 	if (write(fd, &reg, reg_sz) != reg_sz)
-		return -1;
+		return abs(errno) * -1;
 
 	if (read(fd, buf, buf_sz) != buf_sz)
-		return -1;
+		return abs(errno) * -1;
 
 	return buf_sz;
 }
@@ -48,7 +49,7 @@ int i2c_write_reg8(int fd, int addr, uint8_t reg, uint8_t data)
 	buf[1] = data;
 
 	if (write(fd, buf, buf_sz) != buf_sz)
-		return -1;
+		return abs(errno) * -1;
 
 	return buf_sz;
 }

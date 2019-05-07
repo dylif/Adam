@@ -16,7 +16,7 @@ static int am_write(struct lsm9ds0 *lsm, uint8_t base_reg, uint8_t *data, size_t
 
 static struct lsm9ds0_settings settings_def =
 {
-	G_SCALE_245DPS,
+	G_SCALE_2000DPS, //G_SCALE_245DPS,
 	A_SCALE_2G,
  	M_SCALE_2GS,
 	G_ODR_95_BW_125, 
@@ -506,7 +506,7 @@ int set_a_odr(struct lsm9ds0 *lsm, int a_rate)
 	temp &= 0xFF^(0xF << 4);
 	
 	/* shift in our new ODR bits */
-	temp |= (aRate << 4);
+	temp |= (a_rate << 4);
 	
 	/* write the new register value back into CTRL_REG1_AM */
 	if ((status = am_write8(lsm,CTRL_REG1_AM, temp)) < 0)
@@ -528,7 +528,7 @@ int set_a_abw(struct lsm9ds0 *lsm, int abw_rate)
 	temp &= 0xFF^(0x3 << 7);
 	
 	/* shift in our new ODR bits */
-	temp |= (abwRate << 7);
+	temp |= (abw_rate << 7);
 	
 	/* write the new register value back into CTRL_REG2_AM */
 	if ((status = am_write8(lsm, CTRL_REG2_AM, temp)) < 0)
@@ -609,7 +609,7 @@ int calc_g_res(struct lsm9ds0 *lsm)
 	if (lsm == NULL)
 		return -EINVAL;
 	
-	switch (lsm->gScale) {
+	switch (lsm->g_scl) {
 	case G_SCALE_245DPS:
 		lsm->g_res = 245.0f / 32768.0f;
 		break;
@@ -671,11 +671,6 @@ static int g_write8(struct lsm9ds0 *lsm, uint8_t reg, uint8_t data)
 static int g_read(struct lsm9ds0 *lsm, uint8_t base_reg, uint8_t *buf, size_t buf_sz)
 {
 	return i2c_read(lsm->fd, lsm->g_addr, base_reg, buf, buf_sz);
-}
-
-static int g_write(struct lsm9ds0 *lsm, uint8_t base_reg, uint8_t *data, size_t data_sz)
-{
-	return i2c_write(lsm->fd, lsm->g_addr, base_reg, data, data_sz);
 }
 
 static int am_read8(struct lsm9ds0 *lsm, uint8_t reg, uint8_t *buf)

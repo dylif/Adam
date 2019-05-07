@@ -6,9 +6,9 @@
 #include <sys/ioctl.h>
 #include <linux/i2c-dev.h>
 
-#include "../pca9685.h"
-#include "../basic_i2c.h"
-#include "../pca9685_servo.h"
+#include <pca9685.h>
+#include <basic_i2c.h>
+#include <pca9685_servo.h>
 
 #define ADDR 0x40
 #define HZ 50

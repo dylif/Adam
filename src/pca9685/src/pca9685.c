@@ -5,12 +5,11 @@
 #include <errno.h>
 
 #include "pca9685.h"
-#include "basic_i2c.h"
+#include <basic_i2c.h>
 
 /* declare static functions */
 static uint8_t pca9685_get_base_reg(int pin);
 static int pca9685_update_settings(struct pca9685 *pca, int tf);
-static void pca9685_enable_autoinc(struct pca9685 *pca);
 static int pca_read8(struct pca9685 *pca, uint8_t reg, uint8_t *buf);
 static int pca_write8(struct pca9685 *pca, uint8_t reg, uint8_t data);
 static int pca_read16(struct pca9685 *pca, uint8_t reg, uint16_t *buf);

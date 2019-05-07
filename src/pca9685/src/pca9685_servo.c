@@ -2,7 +2,7 @@
 #include <math.h>
 #include <errno.h>
 
-#include "pca9685.h"
+#include <pca9685.h>
 #include "pca9685_servo.h"
 
 /* declare static functions */
