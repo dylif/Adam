@@ -4,19 +4,17 @@
 
 #include "lsm9ds0.h"
 
+/* declare static functions */
 static int g_read8(struct lsm9ds0 *lsm, uint8_t reg, uint8_t *buf);
 static int g_write8(struct lsm9ds0 *lsm, uint8_t reg, uint8_t data);
 static int g_read(struct lsm9ds0 *lsm, uint8_t base_reg, uint8_t *buf, size_t buf_sz);
-static int g_write(struct lsm9ds0 *lsm, uint8_t base_reg, uint8_t *data, size_t data_sz);
 static int am_read8(struct lsm9ds0 *lsm, uint8_t reg, uint8_t *buf);
 static int am_write8(struct lsm9ds0 *lsm, uint8_t reg, uint8_t data);
 static int am_read(struct lsm9ds0 *lsm, uint8_t base_reg, uint8_t *buf, size_t buf_sz);
-static int am_write(struct lsm9ds0 *lsm, uint8_t base_reg, uint8_t *data, size_t data_sz);
-
 
 static struct lsm9ds0_settings settings_def =
 {
-	G_SCALE_2000DPS, //G_SCALE_245DPS,
+	G_SCALE_245DPS,
 	A_SCALE_2G,
  	M_SCALE_2GS,
 	G_ODR_95_BW_125, 
@@ -24,6 +22,7 @@ static struct lsm9ds0_settings settings_def =
 	M_ODR_50
 };
 
+/* lsm9ds0_new: setup a new lsm9ds0 struct and initalize gyro, accel, and mag functions */
 uint16_t lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings, int fd, unsigned int g_addr, unsigned int am_addr)
 {
 	int status;
@@ -33,6 +32,42 @@ uint16_t lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings, int
 	
 	if (lsm == NULL)
 		return -EINVAL;
+		
+	/* set default values */
+	lsm->fd = -1;
+		
+	lsm->g_addr = 0;
+	lsm->am_addr = 0;
+
+	lsm->g_scl = -1;
+	lsm->a_scl = -1;
+	lsm->m_scl = -1;
+	
+	lsm->g_res = -1;
+	lsm->a_res = -1;
+	lsm->m_res = -1;
+
+	lsm->gx = 0;
+	lsm->gy = 0; 
+	lsm->gz = 0;
+	lsm->ax = 0;
+	lsm->ay = 0; 
+	lsm->az = 0;
+	lsm->mx = 0; 
+	lsm->my = 0; 
+	lsm->mz = 0;
+    
+    lsm->temp = 0;
+    
+    /* zero out bias arrays */
+    size_t g_bias_sz = sizeof(lsm->g_bias) / sizeof(lsm->g_bias[0]);
+    size_t a_bias_sz = sizeof(lsm->a_bias) / sizeof(lsm->a_bias[0]);
+    
+    int i;
+    for (i = 0; i < g_bias_sz; ++i)
+		lsm->g_bias[i] = 0;
+	for (i = 0; i < a_bias_sz; ++i)
+		lsm->a_bias[i] = 0;
 	
 	if (settings == NULL)
 		settings = &settings_def;
@@ -45,63 +80,84 @@ uint16_t lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings, int
 	lsm->g_addr = g_addr;
 	lsm->am_addr = am_addr;
 
-	// Store the given scales in class variables. These scale variables
-	// are used throughout to calculate the actual g's, DPS,and Gs's.
+	/* set scale members using settings struct */
 	lsm->g_scl = settings->g_scl;
 	lsm->a_scl = settings->a_scl;
 	lsm->m_scl = settings->m_scl;
 	
-	// Once we have the scale values, we can calculate the resolution
-	// of each sensor. That's what these functions are for. One for each sensor
-	calc_g_res(lsm); // Calculate DPS / ADC tick, stored in g_res variable
-	calc_m_res(lsm); // Calculate Gs / ADC tick, stored in m_res variable
-	calc_a_res(lsm); // Calculate g / ADC tick, stored in a_res variable
+	/* calculate DPS, Gs, and g per ADC tick using the scale members */
+	calc_g_res(lsm);
+	calc_m_res(lsm);
+	calc_a_res(lsm);
 	
 	if ((status = g_read8(lsm, WHO_AM_I_G, &g_test)) < 0)
 		return status;
 	if ((status = am_read8(lsm, WHO_AM_I_AM, &am_test)) < 0)
 		return status;
 	
-	/* Gyro init: */
+	/* gyro init */
 	
-	/* This will "turn on" the gyro. Setting up interrupts, etc. */
+	/* turn on the gyro, set up interrupts, etc. */
 	if ((status = lsm9ds0_gyro_init(lsm)) < 0)
 		return status;
-	/* Set the gyro output data rate and bandwidth. */
+		
+	/* set the gyro data rate and bandwidth. */
 	if ((status = set_g_odr(lsm, settings->g_odr)) < 0)
 		return status;
+		
 	/* Set the gyro range */
 	if ((status = set_g_scl(lsm, lsm->g_scl)) < 0)
 		return status;
 	
-	/* Accelerometer init: */
-	lsm9ds0_accel_init(lsm); // "Turn on" all axes of the accel. Set up interrupts, etc.
-	set_a_odr(lsm, settings->a_odr); // Set the accel data rate.
-	set_a_scl(lsm, lsm->a_scl); // Set the accel range.
+	/* accel init */
 	
-	// Magnetometer initialization stuff:
-	lsm9ds0_mag_init(lsm); // "Turn on" all axes of the mag. Set up interrupts, etc.
-	set_m_odr(lsm, settings->m_odr); // Set the magnetometer output data rate.
-	set_m_scl(lsm, lsm->m_scl); // Set the magnetometer's range.
+	/* turn on all axes of the accel, set up interrupts, etc. */
+	if ((status = lsm9ds0_accel_init(lsm)) < 0)
+		return status;
+		
+	/* set the accel data rate */
+	if ((status = set_a_odr(lsm, settings->a_odr)) < 0)
+		return status;
 	
-	// Once everything is initialized, return the WHO_AM_I registers we read:
+	/* set the accel range */
+	if ((status = set_a_scl(lsm, lsm->a_scl)) < 0)
+		return status;
+	
+	/* mag init */
+	
+	/* turn on all axes of the mag, set up interrupts, etc. */
+	if ((status = lsm9ds0_mag_init(lsm)) < 0)
+		return status;
+	
+	/* set the mag data rate */	
+	if ((status = set_m_odr(lsm, settings->m_odr)) < 0)
+		return status;
+		
+	/* set the mag range */	
+	if ((status = set_m_scl(lsm, lsm->m_scl)) < 0)
+		return status;
+	
+	/* return the WHO_AM_I registers we read */
 	return (am_test << 8) | g_test;
 }
 
-
+/* lsm9ds0_gyro_init: initalize the gyro and set interrupts, etc. */
 int lsm9ds0_gyro_init(struct lsm9ds0 *lsm)
 {
 	int status;
 	
-	/* Normal mode, enable all axes */
+	if (lsm == NULL)
+		return -EINVAL;	
+	
+	/* normal mode, enable all axes */
 	if ((status = g_write8(lsm, CTRL_REG1_G, 0x0F)) < 0)
 		return status;
 	
-	/* Normal mode, high cutoff frequency */
+	/* normal mode, high cutoff frequency */
 	if ((status = g_write8(lsm, CTRL_REG2_G, 0x00)) < 0)
 		return status;
 	
-	/* Int1 enabled (pp, active low), data read on DRDY_G: */
+	/* int1 enabled (pp, active low), data read on DRDY_G: */
 	if ((status = g_write8(lsm, CTRL_REG3_G, 0x88)) < 0)
 		return status;
 	
@@ -120,10 +176,13 @@ int lsm9ds0_gyro_init(struct lsm9ds0 *lsm)
 	*/
 }
 
-
+/* lsm9ds0_accel_init: initalize the accel and set interrupts, etc. */
 int lsm9ds0_accel_init(struct lsm9ds0 *lsm)
 {
 	int status;
+	
+	if (lsm == NULL)
+		return -EINVAL;	
 	
 	if ((status = am_write8(lsm, CTRL_REG0_AM, 0x00)) < 0)
 		return status;
@@ -132,39 +191,42 @@ int lsm9ds0_accel_init(struct lsm9ds0 *lsm)
 	if ((status = am_write8(lsm, CTRL_REG1_AM, 0x57)) < 0)
 		return status;
 	
-	/* Set scale to 2g */
+	/* set scale to 2g */
 	if ((status = am_write8(lsm, CTRL_REG2_AM, 0x00)) < 0)
 		return status;
 
-	/* Accelerometer data ready on INT1_AM (0x04) */
+	/* accelerometer data ready on INT1_AM (0x04) */
 	if ((status = am_write8(lsm, CTRL_REG3_AM, 0x04)) < 0)
 		return status;
 		
 	return 0;
 }
 
-
+/* lsm9ds0_mag_init: initalize the mag and set interrupts, etc. */
 int lsm9ds0_mag_init(struct lsm9ds0 *lsm)
 {			
 	int status;
+	
+	if (lsm == NULL)
+		return -EINVAL;	
 							
-	/* Mag data rate - 100 Hz, enable temperature sensor */
+	/* mag data rate - 100 Hz, enable temperature sensor */
 	if ((status = am_write8(lsm, CTRL_REG5_AM, 0x94)) < 0)
 		return status;
 	
-	/* Mag scale to +/- 2GS */				
+	/* mag scale to +/- 2GS */				
 	if ((status = am_write8(lsm, CTRL_REG6_AM, 0x00)) < 0)
 		return status;
 	
-	/* Continuous conversion mode */
+	/* continuous conversion mode */
 	if ((status = am_write8(lsm, CTRL_REG7_AM, 0x00)) < 0)
 		return status;
 	
-	/* Magnetometer data ready on INT2_AM (0x08) */
+	/* magnetometer data ready on INT2_AM (0x08) */
 	if ((status = am_write8(lsm, CTRL_REG4_AM, 0x04)) < 0)
 		return status;
 	
-	/* Enable interrupts for mag, active-low, push-pull */
+	/* enable interrupts for mag, active-low, push-pull */
 	if ((status = am_write8(lsm, INT_CTRL_REG_M, 0x09)) < 0)
 		return status;
 	
@@ -179,6 +241,7 @@ int lsm9ds0_mag_init(struct lsm9ds0 *lsm)
  * remove errors due to imprecise or varying initial placement. Calibration of sensor data in this manner
  * is good practice.
  */
+/* lsm9ds0_cal: calibrate and find biases to be stored in the struct */
 int lsm9ds0_cal(struct lsm9ds0 *lsm)
 {  
 	int status;
@@ -194,6 +257,9 @@ int lsm9ds0_cal(struct lsm9ds0 *lsm)
 	int i;
 
 	size_t data_sz = sizeof(data) / sizeof(data[0]);
+
+	if (lsm == NULL)
+		return -EINVAL;
 
 	/* get gyro bias */
 	if ((status = g_read8(lsm, CTRL_REG5_G, &c)) < 0)
@@ -295,66 +361,13 @@ int lsm9ds0_cal(struct lsm9ds0 *lsm)
 	return 0;
 }
 
-int lsm9ds0_accel_read(struct lsm9ds0 *lsm)
-{
-	int status;
-	
-	/* declare, zero and get size of array */
-	uint8_t temp[6] = {0, 0, 0, 0, 0, 0};
-	size_t temp_sz = sizeof(temp) / sizeof(temp[0]);
-	
-	/* read 6 bytes, beginning at OUT_X_L_A */
-	if ((status = am_read(lsm, OUT_X_L_A, temp, temp_sz)) < 0)
-		return status;
-	
-	/* x-axis values into ax, y-axis values into ay, z-axis values into az */
-	lsm->ax = (temp[1] << 8) | temp[0];
-	lsm->ay = (temp[3] << 8) | temp[2];
-	lsm->az = (temp[5] << 8) | temp[4];
-	
-	return 0;
-}
-
-int lsm9ds0_mag_read(struct lsm9ds0 *lsm)
-{
-	int status;
-	
-	/* declare, zero and get size of array */
-	uint8_t temp[6] = {0, 0, 0, 0, 0, 0};
-	size_t temp_sz = sizeof(temp) / sizeof(temp[0]);
-	
-	/* read 6 bytes, beginning at OUT_X_L_M */
-	if ((status = am_read(lsm, OUT_X_L_M, temp, temp_sz)) < 0)
-		return status;
-	
-	/* x-axis values into mx, y-axis values into my, and z-axis values into mz */
-	lsm->mx = (temp[1] << 8) | temp[0]; 
-	lsm->my = (temp[3] << 8) | temp[2];
-	lsm->mz = (temp[5] << 8) | temp[4];
-	
-	return 0;
-}
-
-int lsm9ds0_temp_read(struct lsm9ds0 *lsm)
-{
-	int status;
-	
-	/* declare, zero and get size of array */
-	uint8_t temp[2] = {0, 0};
-	size_t temp_sz = sizeof(temp) / sizeof(temp[0]);	
-	
-	/* read 2 bytes, beginning at OUT_TEMP_L_AM */
-	if ((status = am_read(lsm, OUT_TEMP_L_AM, temp, temp_sz)) < 0)
-		return status;
-		
-	lsm->temp = (((int16_t) temp[1] << 12) | temp[0] << 4 ) >> 4; // Temperature is a 12-bit signed integer
-	
-	return 0;
-}
-
+/* lsm9ds0_gyro_read: read raw data from the gyro */
 int lsm9ds0_gyro_read(struct lsm9ds0 *lsm)
 {
 	int status;
+	
+	if (lsm == NULL)
+		return -EINVAL;	
 	
 	/* declare, zero and get size of array */
 	uint8_t temp[6];
@@ -372,28 +385,101 @@ int lsm9ds0_gyro_read(struct lsm9ds0 *lsm)
 	return 0;
 }
 
+/* lsm9ds0_accel_read: read raw data from the accel */
+int lsm9ds0_accel_read(struct lsm9ds0 *lsm)
+{
+	int status;
+	
+	if (lsm == NULL)
+		return -EINVAL;	
+	
+	/* declare, zero and get size of array */
+	uint8_t temp[6] = {0, 0, 0, 0, 0, 0};
+	size_t temp_sz = sizeof(temp) / sizeof(temp[0]);
+	
+	/* read 6 bytes, beginning at OUT_X_L_A */
+	if ((status = am_read(lsm, OUT_X_L_A, temp, temp_sz)) < 0)
+		return status;
+	
+	/* x-axis values into ax, y-axis values into ay, z-axis values into az */
+	lsm->ax = (temp[1] << 8) | temp[0];
+	lsm->ay = (temp[3] << 8) | temp[2];
+	lsm->az = (temp[5] << 8) | temp[4];
+	
+	return 0;
+}
+
+/* lsm9ds0_mag_read: read raw data from the mag */
+int lsm9ds0_mag_read(struct lsm9ds0 *lsm)
+{
+	int status;
+	
+	if (lsm == NULL)
+		return -EINVAL;	
+	
+	/* declare, zero and get size of array */
+	uint8_t temp[6] = {0, 0, 0, 0, 0, 0};
+	size_t temp_sz = sizeof(temp) / sizeof(temp[0]);
+	
+	/* read 6 bytes, beginning at OUT_X_L_M */
+	if ((status = am_read(lsm, OUT_X_L_M, temp, temp_sz)) < 0)
+		return status;
+	
+	/* x-axis values into mx, y-axis values into my, and z-axis values into mz */
+	lsm->mx = (temp[1] << 8) | temp[0]; 
+	lsm->my = (temp[3] << 8) | temp[2];
+	lsm->mz = (temp[5] << 8) | temp[4];
+	
+	return 0;
+}
+
+/* lsm9ds0_temp_read: read raw data from the temp */
+int lsm9ds0_temp_read(struct lsm9ds0 *lsm)
+{
+	int status;
+	
+	if (lsm == NULL)
+		return -EINVAL;
+	
+	/* declare, zero and get size of array */
+	uint8_t temp[2] = {0, 0};
+	size_t temp_sz = sizeof(temp) / sizeof(temp[0]);	
+	
+	/* read 2 bytes, beginning at OUT_TEMP_L_AM */
+	if ((status = am_read(lsm, OUT_TEMP_L_AM, temp, temp_sz)) < 0)
+		return status;
+		
+	lsm->temp = (((int16_t) temp[1] << 12) | temp[0] << 4 ) >> 4; // Temperature is a 12-bit signed integer
+	
+	return 0;
+}
+
+/* calc_gyro: return the gyro raw reading multiplied by the pre-calculated DPS / (ADC tick) */
 float calc_gyro(struct lsm9ds0 *lsm, int16_t gyro)
 {
-	// Return the gyro raw reading times our pre-calculated DPS / (ADC tick):
 	return lsm->g_res * gyro; 
 }
 
+/* calc_accel: return the accel raw reading multiplied by the pre-calculated g's / (ADC tick) */
 float calc_accel(struct lsm9ds0 *lsm, int16_t accel)
 {
-	// Return the accel raw reading times our pre-calculated g's / (ADC tick):
 	return lsm->a_res * accel;
 }
 
+/* calc_mag: return the mag raw reading multiplied by the pre-calculated Gs / (ADC tick) */
 float calc_mag(struct lsm9ds0 *lsm, int16_t mag)
 {
-	// Return the mag raw reading times our pre-calculated Gs / (ADC tick):
 	return lsm->m_res * mag;
 }
 
+/* set_g_scl: write g_scl to hardware registers and update g_res */
 int set_g_scl(struct lsm9ds0 *lsm, int g_scl)
 {
 	int status;
 	uint8_t temp;
+	
+	if (lsm == NULL)
+		return -EINVAL;	
 	
 	/* read CTRL_REG4_G so we don't modify the other the other bits */
 	if ((status = g_read8(lsm, CTRL_REG4_G, &temp)) < 0)
@@ -417,10 +503,14 @@ int set_g_scl(struct lsm9ds0 *lsm, int g_scl)
 	return lsm->g_scl;
 }
 
+/* set_a_scl: write a_scl to hardware registers and update a_res */
 int set_a_scl(struct lsm9ds0 *lsm, int a_scl)
 {
 	int status;
 	uint8_t temp;
+	
+	if (lsm == NULL)
+		return -EINVAL;	
 	
 	/* read CTRL_REG2_AM so we don't modify the other the other bits */
 	if ((status = am_read8(lsm, CTRL_REG2_AM, &temp)) < 0)
@@ -444,10 +534,14 @@ int set_a_scl(struct lsm9ds0 *lsm, int a_scl)
 	return lsm->a_scl;
 }
 
+/* set_m_scl: write m_scl to hardware registers and update m_res */
 int set_m_scl(struct lsm9ds0 *lsm, int m_scl)
 {
 	int status;
 	uint8_t temp;
+	
+	if (lsm == NULL)
+		return -EINVAL;	
 	
 	/* read CTRL_REG6_AM so we don't modify the other the other bits */
 	if ((status = am_read8(lsm, CTRL_REG6_AM, &temp)) < 0)
@@ -471,10 +565,14 @@ int set_m_scl(struct lsm9ds0 *lsm, int m_scl)
 	return lsm->m_scl;
 }
 
+/* set_g_odr: write g_rate to hardware registers */
 int set_g_odr(struct lsm9ds0 *lsm, int g_rate)
 {
 	int status;
 	uint8_t temp;
+	
+	if (lsm == NULL)
+		return -EINVAL;	
 	
 	/* read CTRL_REG1_G so we don't modify the other the other bits */
 	if ((status = g_read8(lsm, CTRL_REG1_G, &temp)) < 0)
@@ -493,10 +591,14 @@ int set_g_odr(struct lsm9ds0 *lsm, int g_rate)
 	return g_rate;
 }
 
+/* set_a_odr: write a_rate to hardware registers */
 int set_a_odr(struct lsm9ds0 *lsm, int a_rate)
 {
 	int status;
 	uint8_t temp;
+	
+	if (lsm == NULL)
+		return -EINVAL;	
 	
 	/* read CTRL_REG1_AM so we don't modify the other the other bits */
 	if ((status = am_read8(lsm, CTRL_REG1_AM, &temp)) < 0)
@@ -515,10 +617,14 @@ int set_a_odr(struct lsm9ds0 *lsm, int a_rate)
 	return a_rate;
 }
 
+/* set_a_abw: write abw_rate to hardware registers */
 int set_a_abw(struct lsm9ds0 *lsm, int abw_rate)
 {
 	int status;
 	uint8_t temp;
+
+	if (lsm == NULL)
+		return -EINVAL;
 	
 	/* read CTRL_REG2_AM so we don't modify the other the other bits */
 	if ((status = am_read8(lsm, CTRL_REG2_AM, &temp)) < 0)
@@ -537,10 +643,14 @@ int set_a_abw(struct lsm9ds0 *lsm, int abw_rate)
 	return abw_rate;
 }
 
+/* set_m_odr: write m_rate to hardware registers */
 int set_m_odr(struct lsm9ds0 *lsm, int m_rate)
 {
 	int status;
 	uint8_t temp;
+	
+	if (lsm == NULL)
+		return -EINVAL;
 	
 	/* read CTRL_REG5_AM so we don't modify the other the other bits */
 	if ((status = am_read8(lsm, CTRL_REG5_AM, &temp)) < 0)
@@ -559,11 +669,14 @@ int set_m_odr(struct lsm9ds0 *lsm, int m_rate)
 	return m_rate;
 }
 
-
+/* lsm9ds0_gyro_cfg_int: configure logical interrupts for the gyro */
 int lsm9ds0_gyro_cfg_int(struct lsm9ds0 *lsm, uint8_t int1_cfg, 
 	uint16_t int1_thsx, uint16_t int1_thsy, uint16_t int1_thsz, uint8_t duration)
 {
 	int status;
+	
+	if (lsm == NULL)
+		return -EINVAL;
 	
 	if ((status = g_write8(lsm, INT1_CFG_G, int1_cfg)) < 0)
 		return status;
@@ -597,7 +710,7 @@ int lsm9ds0_gyro_cfg_int(struct lsm9ds0 *lsm, uint8_t int1_cfg,
 	return 0;
 }
 
-
+/* calc_g_res: calculate the gyro data resolution */ 
 int calc_g_res(struct lsm9ds0 *lsm)
 {
 	/*
@@ -607,6 +720,9 @@ int calc_g_res(struct lsm9ds0 *lsm)
 	 */
 	
 	if (lsm == NULL)
+		return -EINVAL;
+		
+	if (lsm->g_scl < 0)
 		return -EINVAL;
 	
 	switch (lsm->g_scl) {
@@ -624,6 +740,7 @@ int calc_g_res(struct lsm9ds0 *lsm)
 	return 0;
 }
 
+/* calc_a_res: calculate the accel data resolution */ 
 int calc_a_res(struct lsm9ds0 *lsm)
 {
 	/*
@@ -634,6 +751,9 @@ int calc_a_res(struct lsm9ds0 *lsm)
 	
 	if (lsm == NULL)
 		return -EINVAL;
+		
+	if (lsm->a_scl < 0)
+		return -EINVAL;
 	
 	lsm->a_res = (lsm->a_scl == A_SCALE_16G) ? 16.0f / 32768.0f : 
 		   (((float) lsm->a_scl + 1.0f) * 2.0f) / 32768.0f;
@@ -641,6 +761,7 @@ int calc_a_res(struct lsm9ds0 *lsm)
 	return 0;
 }
 
+/* calc_m_res: calculate the mag data resolution */ 
 int calc_m_res(struct lsm9ds0 *lsm)
 {
 	/* Possible magnetometer scales (and their register bit settings) are:
@@ -649,6 +770,9 @@ int calc_m_res(struct lsm9ds0 *lsm)
 	 */
 	
 	if (lsm == NULL)
+		return -EINVAL;
+		
+	if (lsm->m_scl < 0)
 		return -EINVAL;
 	
 	lsm->m_res = (lsm->m_scl == M_SCALE_2GS) ? 2.0f / 32768.0f : 
@@ -686,9 +810,4 @@ static int am_write8(struct lsm9ds0 *lsm, uint8_t reg, uint8_t data)
 static int am_read(struct lsm9ds0 *lsm, uint8_t base_reg, uint8_t *buf, size_t buf_sz)
 {
 	return i2c_read(lsm->fd, lsm->am_addr, base_reg, buf, buf_sz);
-}
-
-static int am_write(struct lsm9ds0 *lsm, uint8_t base_reg, uint8_t *data, size_t data_sz)
-{
-	return i2c_write(lsm->fd, lsm->am_addr, base_reg, data, data_sz);
 }
