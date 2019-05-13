@@ -10,18 +10,16 @@ static long map(long x, long in_min, long in_max, long out_min, long out_max);
 static int us_to_tick(int us, int hz);
 
 /* pca9685_servo_new: create and initalize a servo struct */
-int pca9685_servo_new(struct pca9685_servo *servo, struct pca9685 *pca, int pin, int us_min, int us_max)
+int pca9685_servo_new(struct pca9685_servo *servo, struct pca9685 *pca, unsigned int pin, unsigned int us_min, unsigned int us_max)
 {
-	int status;
-
 	/* check struct */
 	if (servo == NULL)
 		return -EINVAL;
 
 	/* set defaults */
 	servo->pca = NULL;
-    servo->us_min = -1;
-    servo->us_max = -1;
+    servo->us_min = 0;
+    servo->us_max = 0;
 	servo->pin = -1;
 	servo->us = -1;
 
@@ -29,21 +27,13 @@ int pca9685_servo_new(struct pca9685_servo *servo, struct pca9685 *pca, int pin,
 	if (pca == NULL)
 		return -EINVAL;
 
-	/* check if pca struct is setup for pwm */
-	if ((status = pca9685_pwm_check(pca)) < 0)
-		return status;	
-
 	/* validate value of pin and cap at min and max */
 	if (pin > PCA9685_PIN_MAX)
 		pin = PCA9685_PIN_MAX;
 	if (pin < 0)
 		pin = 0;
-
-	/* check servo min and max */
-	if (us_min < 0 || us_max < 0)
-		return -EDOM;
-	
-	/* write validated values to members */
+		
+	/* write values to members */
 	servo->pca = pca;
 	servo->pin = pin;
 	servo->us_min = us_min;
@@ -53,7 +43,7 @@ int pca9685_servo_new(struct pca9685_servo *servo, struct pca9685 *pca, int pin,
 }
 
 /* pca9685_servo_write_us: write a microsecond value to a servo struct. returns value written to servo */
-int pca9685_servo_write_us(struct pca9685_servo *servo, int us)
+int pca9685_servo_write_us(struct pca9685_servo *servo, unsigned int us)
 {
 	int status;
 	
@@ -70,7 +60,7 @@ int pca9685_servo_write_us(struct pca9685_servo *servo, int us)
 }
 
 /* pca9685_servo_deg_to_us: convert degree value to a mircosecond value depending on the servo's min and max range */
-int pca9685_servo_deg_to_us(struct pca9685_servo *servo, int deg)
+int pca9685_servo_deg_to_us(struct pca9685_servo *servo, unsigned int deg)
 {
 	return map(deg, 0, 180, servo->us_min, servo->us_max);
 }
