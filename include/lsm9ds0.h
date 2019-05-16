@@ -258,7 +258,11 @@ struct lsm9ds0
     
     int16_t temp;
     
-    /* arrays to store gyro and accel biases */
+    /* arrays to store gyro and accel biases 
+     * 0: X bias
+     * 1: Y bias
+     * 2: Z bias
+     */
     float g_bias[3];
 	float a_bias[3];
 };
