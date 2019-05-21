@@ -69,12 +69,14 @@ uint16_t lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings, int
 	for (i = 0; i < a_bias_sz; ++i)
 		lsm->a_bias[i] = 0;
 	
+	/* assume default settings */
 	if (settings == NULL)
 		settings = &settings_def;
 		
 	if (fd < 0)
 		return fd;
-		
+	
+	/* set members to given values */
 	lsm->fd = fd;
 		
 	lsm->g_addr = g_addr;
@@ -90,6 +92,7 @@ uint16_t lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings, int
 	calc_m_res(lsm);
 	calc_a_res(lsm);
 	
+	/* read the "who am i" registers */
 	if ((status = g_read8(lsm, WHO_AM_I_G, &g_test)) < 0)
 		return status;
 	if ((status = am_read8(lsm, WHO_AM_I_AM, &am_test)) < 0)

@@ -29,11 +29,14 @@
 #define SERVO_R_ANK 4
 #define SERVO_L_ANK 5
 
-int centre_all(struct pca9685_servo **servos)
+int center_all(struct pca9685_servo **servos)
 {
-	int i;
+	int status, i;
+	
+	/* iterate through servo pointer array */
 	for (i = 0; i < SERVO_NUM; ++i) {
-		pca9685_servo_write_us(servos[i], SERVO_NEU);
+		if ((status = pca9685_servo_write_us(servos[i], SERVO_NEU)) < 0)
+			return status;
 	}	
 	
 	return 0;
@@ -41,15 +44,80 @@ int centre_all(struct pca9685_servo **servos)
 
 int right_step(struct pca9685_servo **servos)
 {
-	int deg;
+	int status, deg;
 	
+	/* move left angle away from lean to balance */
 	deg = pca9685_servo_deg_to_us(servos[SERVO_L_ANK], 120);
-	pca9685_servo_write_us(servos[SERVO_L_ANK], deg);
+	if ((status = pca9685_servo_write_us(servos[SERVO_L_ANK], deg)) < 0)
+		return status;
+		
+	delay(1500);	
 	
+	/* move right knee in */
 	deg = pca9685_servo_deg_to_us(servos[SERVO_R_KNEE], 0);
-	pca9685_servo_write_us(servos[SERVO_R_KNEE], deg);
+	if ((status = pca9685_servo_write_us(servos[SERVO_R_KNEE], deg)) < 0)
+		return status;
+		
+	/* move right leg out */
+	deg = pca9685_servo_deg_to_us(servos[SERVO_R_HIP], 0);
+	if ((status = pca9685_servo_write_us(servos[SERVO_R_HIP], deg)) < 0)
+		return status;
+		
+	delay(1500);
+		
+	/* move right knee out */
+	deg = pca9685_servo_deg_to_us(servos[SERVO_R_KNEE], 180);
+	if ((status = pca9685_servo_write_us(servos[SERVO_R_KNEE], deg)) < 0)
+		return status;
+	
+	delay(1500);
+		
+	/* move right leg and right knee to neutral */
+	if ((status = pca9685_servo_write_us(servos[SERVO_R_HIP], SERVO_NEU)) < 0)
+		return status;
+	if ((status = pca9685_servo_write_us(servos[SERVO_R_KNEE], SERVO_NEU)) < 0)
+		return status;	
 	
 	return 0;
+}	
+
+int left_step(struct pca9685_servo **servos)
+{
+	int status, deg;
+	
+	/* move right angle away from lean to balance */
+	deg = pca9685_servo_deg_to_us(servos[SERVO_R_ANK], 120);
+	if ((status = pca9685_servo_write_us(servos[SERVO_R_ANK], deg)) < 0)
+		return status;
+		
+	delay(1500);	
+	
+	/* move left knee in */
+	deg = pca9685_servo_deg_to_us(servos[SERVO_L_KNEE], 0);
+	if ((status = pca9685_servo_write_us(servos[SERVO_L_KNEE], deg)) < 0)
+		return status;
+		
+	/* move left leg out */
+	deg = pca9685_servo_deg_to_us(servos[SERVO_L_HIP], 0);
+	if ((status = pca9685_servo_write_us(servos[SERVO_L_HIP], deg)) < 0)
+		return status;
+		
+	delay(1500);
+		
+	/* move left knee out */
+	deg = pca9685_servo_deg_to_us(servos[SERVO_L_KNEE], 180);
+	if ((status = pca9685_servo_write_us(servos[SERVO_L_KNEE], deg)) < 0)
+		return status;
+	
+	delay(1500);
+		
+	/* move left leg and left knee to neutral */
+	if ((status = pca9685_servo_write_us(servos[SERVO_L_HIP], SERVO_NEU)) < 0)
+		return status;
+	if ((status = pca9685_servo_write_us(servos[SERVO_L_KNEE], SERVO_NEU)) < 0)
+		return status;	
+	
+	return 0;	
 }	
 
 int main()
@@ -82,20 +150,41 @@ int main()
 		return fd;
 	}
 	
+	/* create pca */
 	if ((status = pca9685_new(&pca, fd, PCA_ADDR)) < 0) {
 		fprintf(stderr, "Error in pca_new %d: %s\n", status, strerror(status * -1));
 		return status;
 	}
 	
+	/* create servos */
 	for (i = 0; i < SERVO_NUM; ++i) {
 		if ((status = pca9685_servo_new(servos[i], &pca, i, SERVO_MIN, SERVO_MAX)) < 0) {
-			fprintf(stderr, "Error in servo_new %d for servo : %s\n", status, i, strerror(status * -1));
+			fprintf(stderr, "Error in servo_new %d for servo %d: %s\n", status, i, strerror(status * -1));
 			return status;
 		}
 	}	
 	
+	/* get pca ready for pwm I/O */
 	if ((status = pca9685_pwm_init(&pca, PCA_HERTZ)) < 0) {
-		fprintf(stderr, "Error in pwm_init %d: %s=\n", status, strerror(status * -1));
+		fprintf(stderr, "Error in pwm_init %d: %s\n", status, strerror(status * -1));
+		return status;
+	}
+	
+	/* center all servos */
+	if ((status = center_all(servos)) < 0) {
+		fprintf(stderr, "Error in centering servos %d: %s\n", status, strerror(status * -1));
+		return status;
+	}	
+	
+	/* take a step right */
+	if ((status = right_step(servos)) < 0) {
+		fprintf(stderr, "Error in right step %d: %s\n", status, strerror(status * -1));
+		return status;
+	}
+	
+	/* take a step left */
+	if ((status = left_step(servos)) < 0) {
+		fprintf(stderr, "Error in left step %d: %s\n", status, strerror(status * -1));
 		return status;
 	}
 	
