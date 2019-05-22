@@ -29,11 +29,21 @@
 #define SERVO_R_ANK 4
 #define SERVO_L_ANK 5
 
+static struct lsm9ds0_settings settings =
+{
+	G_SCALE_2000DPS,
+	A_SCALE_2G,
+ 	M_SCALE_2GS,
+	G_ODR_95_BW_125, 
+	A_ODR_50, 
+	M_ODR_50
+};
+
 int center_all(struct pca9685_servo **servos)
 {
 	int status, i;
 	
-	/* iterate through servo pointer array */
+	/* iterate through servo pointer array and write neutral position */
 	for (i = 0; i < SERVO_NUM; ++i) {
 		if ((status = pca9685_servo_write_us(servos[i], SERVO_NEU)) < 0)
 			return status;
@@ -125,6 +135,7 @@ int main()
 	int status, i;
 	
 	struct pca9685 pca;
+	struct lsm9ds0 lsm;
 	struct pca9685_servo *servos[SERVO_NUM];
 	
 	struct pca9685_servo right_knee;
@@ -143,6 +154,8 @@ int main()
 	servos[SERVO_R_ANK] = &right_ankle;
 	servos[SERVO_L_ANK] = &left_ankle;
 	
+	float bias_tmp[3] = {0, 0, 0};
+	
 	/* open i2c file */
 	int fd = open(DEVICE_I2C, O_RDWR);
 	if (fd < 0) {
@@ -153,6 +166,12 @@ int main()
 	/* create pca */
 	if ((status = pca9685_new(&pca, fd, PCA_ADDR)) < 0) {
 		fprintf(stderr, "Error in pca_new %d: %s\n", status, strerror(status * -1));
+		return status;
+	}
+	
+	/* create lsm */
+	if ((status = lsm9ds0_new(&lsm, &settings, fd, LSM_G_ADDR, LSM_AM_ADDR)) < 0) {
+		fprintf(stderr, "Error in lsm_new %d: %s\n", status, strerror(status * -1));
 		return status;
 	}
 	
@@ -169,6 +188,29 @@ int main()
 		fprintf(stderr, "Error in pwm_init %d: %s\n", status, strerror(status * -1));
 		return status;
 	}
+	
+	/* calibrate gyro twice, take the lower as the gyro can get confused during first reads */
+	printf("Calibrating gyro... Do not touch!!\n");
+	
+	if ((status = lsm9ds0_cal(&lsm)) < 0) {
+		fprintf(stderr, "Error in lsm_cal 1 %d: %s\n", status, strerror(status * -1));
+		return status;		
+	}
+	
+	for (i = 0; i < 3; ++i)
+		bias_tmp[i] = lsm.g_bias[i];
+	
+	/* wait a second before attempting to calibrate again, this allows for the gyro to become stable */	
+	delay(1000);	
+	
+	if ((status = lsm9ds0_cal(&lsm)) < 0) {
+		fprintf(stderr, "Error in lsm_cal 2 %d: %s\n", status, strerror(status * -1));
+		return status;		
+	}
+	
+	for (i = 0; i < 3; ++i)
+		lsm.g_bias[i] = (bias_tmp[i] > lsm.g_bias[i]) ? lsm.g_bias[i] : bias_tmp[i];
+	
 	
 	/* center all servos */
 	if ((status = center_all(servos)) < 0) {
@@ -187,5 +229,28 @@ int main()
 		fprintf(stderr, "Error in left step %d: %s\n", status, strerror(status * -1));
 		return status;
 	}
+	
+	/* state gyro biases */
+	printf("X Bias: %4.2f Y Bias: %4.2f Z Bias: %4.2f\n", lsm.g_bias[0], lsm.g_bias[1], lsm.g_bias[2]);
+	
+	/* read gyro */
+	for (i = 0; i < 10; ++i) {
+		if ((status = lsm9ds0_gyro_read(&lsm)) < 0) {
+			fprintf(stderr, "Error in gyro_read %d: %s\n", status, strerror(status * -1));
+			return -1;
+		}
+		
+		printf("X: %4.2f Y: %4.2f Z: %4.2f\n", 
+			calc_gyro(&lsm, lsm.gx) - lsm.g_bias[0], 
+			calc_gyro(&lsm, lsm.gy) - lsm.g_bias[1], 
+			calc_gyro(&lsm, lsm.gz) - lsm.g_bias[2]);
+			
+		delay(1000);		
+	}
+	
+	/* clean up */
+	pca9685_pwm_reset(&pca);
+	
+	return 0;
 	
 }

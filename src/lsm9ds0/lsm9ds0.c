@@ -373,17 +373,17 @@ int lsm9ds0_gyro_read(struct lsm9ds0 *lsm)
 		return -EINVAL;	
 	
 	/* declare, zero and get size of array */
-	uint8_t temp[6];
-	size_t temp_sz = sizeof(temp) / sizeof(temp[0]);
+	uint8_t tmp[6];
+	size_t tmp_sz = sizeof(tmp) / sizeof(tmp[0]);
 	
 	/* Read 6 bytes, beginning at OUT_X_L_G */
-	if ((status = g_read(lsm, OUT_X_L_G, temp, temp_sz)) < 0)
+	if ((status = g_read(lsm, OUT_X_L_G, tmp, tmp_sz)) < 0)
 		return status;
 	
-	/* x-axis values into gx, y-axis values into gy, z-axis values into gz */
-	lsm->gx = (temp[1] << 8) | temp[0];
-	lsm->gy = (temp[3] << 8) | temp[2];
-	lsm->gz = (temp[5] << 8) | temp[4];
+	/* x-axis values into gx_raw, y-axis values into gy_raw, z-axis values into gz_raw */
+	lsm->gx_raw = (tmp[1] << 8) | tmp[0];
+	lsm->gy_raw = (tmp[3] << 8) | tmp[2];
+	lsm->gz_raw = (tmp[5] << 8) | tmp[4];
 	
 	return 0;
 }
@@ -397,17 +397,17 @@ int lsm9ds0_accel_read(struct lsm9ds0 *lsm)
 		return -EINVAL;	
 	
 	/* declare, zero and get size of array */
-	uint8_t temp[6] = {0, 0, 0, 0, 0, 0};
-	size_t temp_sz = sizeof(temp) / sizeof(temp[0]);
+	uint8_t tmp[6] = {0, 0, 0, 0, 0, 0};
+	size_t tmp_sz = sizeof(tmp) / sizeof(tmp[0]);
 	
 	/* read 6 bytes, beginning at OUT_X_L_A */
-	if ((status = am_read(lsm, OUT_X_L_A, temp, temp_sz)) < 0)
+	if ((status = am_read(lsm, OUT_X_L_A, tmp, tmp_sz)) < 0)
 		return status;
 	
-	/* x-axis values into ax, y-axis values into ay, z-axis values into az */
-	lsm->ax = (temp[1] << 8) | temp[0];
-	lsm->ay = (temp[3] << 8) | temp[2];
-	lsm->az = (temp[5] << 8) | temp[4];
+	/* x-axis values into ax_raw, y-axis values into ay_raw, z-axis values into az_raw */
+	lsm->ax = (tmp[1] << 8) | tmp[0];
+	lsm->ay = (tmp[3] << 8) | tmp[2];
+	lsm->az = (tmp[5] << 8) | tmp[4];
 	
 	return 0;
 }
@@ -421,17 +421,17 @@ int lsm9ds0_mag_read(struct lsm9ds0 *lsm)
 		return -EINVAL;	
 	
 	/* declare, zero and get size of array */
-	uint8_t temp[6] = {0, 0, 0, 0, 0, 0};
-	size_t temp_sz = sizeof(temp) / sizeof(temp[0]);
+	uint8_t tmp[6] = {0, 0, 0, 0, 0, 0};
+	size_t tmp_sz = sizeof(tmp) / sizeof(tmp[0]);
 	
 	/* read 6 bytes, beginning at OUT_X_L_M */
-	if ((status = am_read(lsm, OUT_X_L_M, temp, temp_sz)) < 0)
+	if ((status = am_read(lsm, OUT_X_L_M, tmp, tmp_sz)) < 0)
 		return status;
 	
 	/* x-axis values into mx, y-axis values into my, and z-axis values into mz */
-	lsm->mx = (temp[1] << 8) | temp[0]; 
-	lsm->my = (temp[3] << 8) | temp[2];
-	lsm->mz = (temp[5] << 8) | temp[4];
+	lsm->mx = (tmp[1] << 8) | tmp[0]; 
+	lsm->my = (tmp[3] << 8) | tmp[2];
+	lsm->mz = (tmp[5] << 8) | tmp[4];
 	
 	return 0;
 }
@@ -445,17 +445,26 @@ int lsm9ds0_temp_read(struct lsm9ds0 *lsm)
 		return -EINVAL;
 	
 	/* declare, zero and get size of array */
-	uint8_t temp[2] = {0, 0};
-	size_t temp_sz = sizeof(temp) / sizeof(temp[0]);	
+	uint8_t tmp[2] = {0, 0};
+	size_t tmp_sz = sizeof(tmp) / sizeof(tmp[0]);	
 	
 	/* read 2 bytes, beginning at OUT_TEMP_L_AM */
-	if ((status = am_read(lsm, OUT_TEMP_L_AM, temp, temp_sz)) < 0)
+	if ((status = am_read(lsm, OUT_TEMP_L_AM, tmp, tmp_sz)) < 0)
 		return status;
 		
-	lsm->temp = (((int16_t) temp[1] << 12) | temp[0] << 4 ) >> 4; // Temperature is a 12-bit signed integer
+	lsm->temp = (((int16_t) tmp[1] << 12) | tmp[0] << 4 ) >> 4; // Temperature is a 12-bit signed integer
 	
 	return 0;
 }
+
+int lsm_update(struct lsm9ds0 *lsm)
+{
+	int status, i;
+	
+	for (i = 0; i < 3; ++i) { /* max 3 for a three dimensional world, we don't live in the fourth dimension yet */
+		// TODO: finish wiritng this function to remove the 2 functions below this 
+	}	 
+}	
 
 /* calc_gyro: return the gyro raw reading multiplied by the pre-calculated DPS / (ADC tick) */
 float calc_gyro(struct lsm9ds0 *lsm, int16_t gyro)

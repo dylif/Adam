@@ -245,7 +245,7 @@ struct lsm9ds0
 	float a_res;
 	float m_res;
 
-	/* members to store raw readings from the lsm */
+	/* these will be updated when lsm_calc is called */
 	int16_t gx;
 	int16_t	gy; 
 	int16_t	gz;
@@ -255,7 +255,17 @@ struct lsm9ds0
 	int16_t mx; 
 	int16_t	my; 
 	int16_t	mz;
-    
+	
+	/* members to store raw readings from the lsm */
+	int16_t gx_raw;
+	int16_t	gy_raw; 
+	int16_t	gz_raw;
+	int16_t ax_raw;
+	int16_t	ay_raw; 
+	int16_t	az_raw;
+	int16_t mx_raw; 
+	int16_t	my_raw; 
+	int16_t	mz_raw;
     int16_t temp;
     
     /* arrays to store gyro and accel biases 
