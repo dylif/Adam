@@ -245,16 +245,16 @@ struct lsm9ds0
 	float a_res;
 	float m_res;
 
-	/* these will be updated when lsm_calc is called */
-	int16_t gx;
-	int16_t	gy; 
-	int16_t	gz;
-	int16_t ax;
-	int16_t	ay; 
-	int16_t	az;
-	int16_t mx; 
-	int16_t	my; 
-	int16_t	mz;
+	/* these will be updated when lsm_update is called */
+	float gx;
+	float gy; 
+	float gz;
+	float ax;
+	float ay; 
+	float az;
+	float mx; 
+	float my; 
+	float mz;
 	
 	/* members to store raw readings from the lsm */
 	int16_t gx_raw;
@@ -297,6 +297,7 @@ int lsm9ds0_mag_init(struct lsm9ds0 *lsm);
 int lsm9ds0_mag_read(struct lsm9ds0 *lsm);
 int lsm9ds0_temp_read(struct lsm9ds0 *lsm);
 int lsm9ds0_cal(struct lsm9ds0 *lsm);
+void lsm_update(struct lsm9ds0 *lsm);
 float calc_gyro(struct lsm9ds0 *lsm, int16_t gyro);
 float calc_accel(struct lsm9ds0 *lsm, int16_t accel);
 float calc_mag(struct lsm9ds0 *lsm, int16_t mag);

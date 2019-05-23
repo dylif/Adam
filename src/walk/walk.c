@@ -199,6 +199,9 @@ int main()
 	
 	for (i = 0; i < 3; ++i)
 		bias_tmp[i] = lsm.g_bias[i];
+		
+	/* state gyro biases */
+	printf("X Bias: %4.2f Y Bias: %4.2f Z Bias: %4.2f\n", lsm.g_bias[0], lsm.g_bias[1], lsm.g_bias[2]);	
 	
 	/* wait a second before attempting to calibrate again, this allows for the gyro to become stable */	
 	delay(1000);	
@@ -231,19 +234,17 @@ int main()
 	}
 	
 	/* state gyro biases */
-	printf("X Bias: %4.2f Y Bias: %4.2f Z Bias: %4.2f\n", lsm.g_bias[0], lsm.g_bias[1], lsm.g_bias[2]);
+	printf("Final:\nX Bias: %4.2f Y Bias: %4.2f Z Bias: %4.2f\n", lsm.g_bias[0], lsm.g_bias[1], lsm.g_bias[2]);
 	
 	/* read gyro */
 	for (i = 0; i < 10; ++i) {
 		if ((status = lsm9ds0_gyro_read(&lsm)) < 0) {
 			fprintf(stderr, "Error in gyro_read %d: %s\n", status, strerror(status * -1));
-			return -1;
+			return status;
 		}
 		
-		printf("X: %4.2f Y: %4.2f Z: %4.2f\n", 
-			calc_gyro(&lsm, lsm.gx) - lsm.g_bias[0], 
-			calc_gyro(&lsm, lsm.gy) - lsm.g_bias[1], 
-			calc_gyro(&lsm, lsm.gz) - lsm.g_bias[2]);
+		lsm_update(&lsm);
+		printf("X: %4.2f Y: %4.2f Z: %4.2f\n", lsm.gx, lsm.gy, lsm.gz);
 			
 		delay(1000);		
 	}

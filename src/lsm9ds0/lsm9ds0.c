@@ -5,6 +5,7 @@
 #include "lsm9ds0.h"
 
 /* declare static functions */
+static void set_defaults(struct lsm9ds0 *lsm);
 static int g_read8(struct lsm9ds0 *lsm, uint8_t reg, uint8_t *buf);
 static int g_write8(struct lsm9ds0 *lsm, uint8_t reg, uint8_t data);
 static int g_read(struct lsm9ds0 *lsm, uint8_t base_reg, uint8_t *buf, size_t buf_sz);
@@ -34,40 +35,7 @@ uint16_t lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings, int
 		return -EINVAL;
 		
 	/* set default values */
-	lsm->fd = -1;
-		
-	lsm->g_addr = 0;
-	lsm->am_addr = 0;
-
-	lsm->g_scl = -1;
-	lsm->a_scl = -1;
-	lsm->m_scl = -1;
-	
-	lsm->g_res = -1;
-	lsm->a_res = -1;
-	lsm->m_res = -1;
-
-	lsm->gx = 0;
-	lsm->gy = 0; 
-	lsm->gz = 0;
-	lsm->ax = 0;
-	lsm->ay = 0; 
-	lsm->az = 0;
-	lsm->mx = 0; 
-	lsm->my = 0; 
-	lsm->mz = 0;
-    
-    lsm->temp = 0;
-    
-    /* zero out bias arrays */
-    size_t g_bias_sz = sizeof(lsm->g_bias) / sizeof(lsm->g_bias[0]);
-    size_t a_bias_sz = sizeof(lsm->a_bias) / sizeof(lsm->a_bias[0]);
-    
-    int i;
-    for (i = 0; i < g_bias_sz; ++i)
-		lsm->g_bias[i] = 0;
-	for (i = 0; i < a_bias_sz; ++i)
-		lsm->a_bias[i] = 0;
+	set_defaults(lsm);
 	
 	/* assume default settings */
 	if (settings == NULL)
@@ -164,7 +132,7 @@ int lsm9ds0_gyro_init(struct lsm9ds0 *lsm)
 	if ((status = g_write8(lsm, CTRL_REG3_G, 0x88)) < 0)
 		return status;
 	
-	/* Set scale to 245 dps */
+	/* Set scale to default 245 dps */
 	if ((status = g_write8(lsm, CTRL_REG4_G, 0x00)) < 0)
 		return status;
 	
@@ -172,11 +140,6 @@ int lsm9ds0_gyro_init(struct lsm9ds0 *lsm)
 		return status;
 		
 	return 0;
-	
-	/*
-	// Temporary !!! For testing !!! Remove !!! Or make useful !!!
-	configGyroInt(lsm,0x2A, 0, 0, 0, 0); // Trigger interrupt when above 0 DPS...
-	*/
 }
 
 /* lsm9ds0_accel_init: initalize the accel and set interrupts, etc. */
@@ -194,7 +157,7 @@ int lsm9ds0_accel_init(struct lsm9ds0 *lsm)
 	if ((status = am_write8(lsm, CTRL_REG1_AM, 0x57)) < 0)
 		return status;
 	
-	/* set scale to 2g */
+	/* set scale to default 2g */
 	if ((status = am_write8(lsm, CTRL_REG2_AM, 0x00)) < 0)
 		return status;
 
@@ -237,12 +200,10 @@ int lsm9ds0_mag_init(struct lsm9ds0 *lsm)
 }
 
 /* This is a function that uses the FIFO to accumulate sample of accelerometer and gyro data, average
- * them, scales them to  gs and deg/s, respectively, and then passes the biases to the main sketch
- * for subtraction from all subsequent data. There are no gyro and accelerometer bias registers to store
- * the data as there are in the ADXL345, a precursor to the LSM9DS0, or the MPU-9150, so we have to
- * subtract the biases ourselves. This results in a more accurate measurement in general and can
- * remove errors due to imprecise or varying initial placement. Calibration of sensor data in this manner
- * is good practice.
+ * them, scales them to gs and deg/s, respectively, and stores them in the struct for use later in the 
+ * lsm_update function, where the biases are taken off of scaled raw readings. This results in a more 
+ * accurate measurement in general and can remove errors due to imprecise or varying initial placement. 
+ * Calibration of sensor data in this manner is good practice.
  */
 /* lsm9ds0_cal: calibrate and find biases to be stored in the struct */
 int lsm9ds0_cal(struct lsm9ds0 *lsm)
@@ -339,7 +300,7 @@ int lsm9ds0_cal(struct lsm9ds0 *lsm)
 			return status;
 		accel_bias[0] += (((int16_t) data[1] << 8) | data[0]);
 		accel_bias[1] += (((int16_t) data[3] << 8) | data[2]);
-		accel_bias[2] += (((int16_t) data[5] << 8) | data[4]) - (int16_t)(1.0f/lsm->a_res); 
+		accel_bias[2] += (((int16_t) data[5] << 8) | data[4]) - (int16_t)(1.0f / lsm->a_res); 
 	}  
 	
 	/* average the data */
@@ -405,9 +366,9 @@ int lsm9ds0_accel_read(struct lsm9ds0 *lsm)
 		return status;
 	
 	/* x-axis values into ax_raw, y-axis values into ay_raw, z-axis values into az_raw */
-	lsm->ax = (tmp[1] << 8) | tmp[0];
-	lsm->ay = (tmp[3] << 8) | tmp[2];
-	lsm->az = (tmp[5] << 8) | tmp[4];
+	lsm->ax_raw = (tmp[1] << 8) | tmp[0];
+	lsm->ay_raw = (tmp[3] << 8) | tmp[2];
+	lsm->az_raw = (tmp[5] << 8) | tmp[4];
 	
 	return 0;
 }
@@ -428,10 +389,10 @@ int lsm9ds0_mag_read(struct lsm9ds0 *lsm)
 	if ((status = am_read(lsm, OUT_X_L_M, tmp, tmp_sz)) < 0)
 		return status;
 	
-	/* x-axis values into mx, y-axis values into my, and z-axis values into mz */
-	lsm->mx = (tmp[1] << 8) | tmp[0]; 
-	lsm->my = (tmp[3] << 8) | tmp[2];
-	lsm->mz = (tmp[5] << 8) | tmp[4];
+	/* x-axis values into mx_raw, y-axis values into my_raw, and z-axis values into mz_raw */
+	lsm->mx_raw = (tmp[1] << 8) | tmp[0]; 
+	lsm->my_raw = (tmp[3] << 8) | tmp[2];
+	lsm->mz_raw = (tmp[5] << 8) | tmp[4];
 	
 	return 0;
 }
@@ -451,38 +412,31 @@ int lsm9ds0_temp_read(struct lsm9ds0 *lsm)
 	/* read 2 bytes, beginning at OUT_TEMP_L_AM */
 	if ((status = am_read(lsm, OUT_TEMP_L_AM, tmp, tmp_sz)) < 0)
 		return status;
-		
-	lsm->temp = (((int16_t) tmp[1] << 12) | tmp[0] << 4 ) >> 4; // Temperature is a 12-bit signed integer
+	
+	/* temperature is a 12-bit signed int */
+	lsm->temp = (((int16_t) tmp[1] << 12) | tmp[0] << 4 ) >> 4; 
 	
 	return 0;
 }
 
-int lsm_update(struct lsm9ds0 *lsm)
-{
-	int status, i;
+/* lsm_update: update reading members to correctly scaled and calibrated values */
+void lsm_update(struct lsm9ds0 *lsm)
+{	
+	/* scale the raw gyro readings and subtract the bias */
+	lsm->gx = (lsm->gx_raw * lsm->g_res) - lsm->g_bias[0];
+	lsm->gy = (lsm->gy_raw * lsm->g_res) - lsm->g_bias[1];
+	lsm->gz = (lsm->gz_raw * lsm->g_res) - lsm->g_bias[2];
 	
-	for (i = 0; i < 3; ++i) { /* max 3 for a three dimensional world, we don't live in the fourth dimension yet */
-		// TODO: finish wiritng this function to remove the 2 functions below this 
-	}	 
+	/* scale the raw accel readings and subtract the bias */
+	lsm->ax = (lsm->ax_raw * lsm->a_res) - lsm->a_bias[0];
+	lsm->ay = (lsm->ay_raw * lsm->a_res) - lsm->a_bias[1];
+	lsm->az = (lsm->az_raw * lsm->a_res) - lsm->a_bias[2];
+	
+	/* scale the raw mag readings */
+	lsm->mx = lsm->mx_raw * lsm->m_res;
+	lsm->my = lsm->my_raw * lsm->m_res;
+	lsm->mz = lsm->mz_raw * lsm->m_res;
 }	
-
-/* calc_gyro: return the gyro raw reading multiplied by the pre-calculated DPS / (ADC tick) */
-float calc_gyro(struct lsm9ds0 *lsm, int16_t gyro)
-{
-	return lsm->g_res * gyro; 
-}
-
-/* calc_accel: return the accel raw reading multiplied by the pre-calculated g's / (ADC tick) */
-float calc_accel(struct lsm9ds0 *lsm, int16_t accel)
-{
-	return lsm->a_res * accel;
-}
-
-/* calc_mag: return the mag raw reading multiplied by the pre-calculated Gs / (ADC tick) */
-float calc_mag(struct lsm9ds0 *lsm, int16_t mag)
-{
-	return lsm->m_res * mag;
-}
 
 /* set_g_scl: write g_scl to hardware registers and update g_res */
 int set_g_scl(struct lsm9ds0 *lsm, int g_scl)
@@ -794,6 +748,54 @@ int calc_m_res(struct lsm9ds0 *lsm)
 }
 
 /* static functions */
+static void set_defaults(struct lsm9ds0 *lsm)
+{
+	/* set default values */
+	lsm->fd = -1;
+		
+	lsm->g_addr = 0;
+	lsm->am_addr = 0;
+
+	lsm->g_scl = -1;
+	lsm->a_scl = -1;
+	lsm->m_scl = -1;
+	
+	lsm->g_res = -1;
+	lsm->a_res = -1;
+	lsm->m_res = -1;
+
+	lsm->gx = 0;
+	lsm->gy = 0; 
+	lsm->gz = 0;
+	lsm->ax = 0;
+	lsm->ay = 0; 
+	lsm->az = 0;
+	lsm->mx = 0; 
+	lsm->my = 0; 
+	lsm->mz = 0;
+	
+	lsm->gx_raw = 0;
+	lsm->gy_raw = 0; 
+	lsm->gz_raw = 0;
+	lsm->ax_raw = 0;
+	lsm->ay_raw = 0; 
+	lsm->az_raw = 0;
+	lsm->mx_raw = 0; 
+	lsm->my_raw = 0; 
+	lsm->mz_raw = 0;
+    lsm->temp = 0;
+    
+    /* zero out bias arrays */
+    size_t g_bias_sz = sizeof(lsm->g_bias) / sizeof(lsm->g_bias[0]);
+    size_t a_bias_sz = sizeof(lsm->a_bias) / sizeof(lsm->a_bias[0]);
+    
+    int i;
+    for (i = 0; i < g_bias_sz; ++i)
+		lsm->g_bias[i] = 0;
+	for (i = 0; i < a_bias_sz; ++i)
+		lsm->a_bias[i] = 0;
+}	
+
 static int g_read8(struct lsm9ds0 *lsm, uint8_t reg, uint8_t *buf)
 {
 	return i2c_read_reg8(lsm->fd, lsm->g_addr, reg, buf);
