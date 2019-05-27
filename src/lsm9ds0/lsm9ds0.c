@@ -200,13 +200,7 @@ int lsm9ds0_mag_init(struct lsm9ds0 *lsm)
 	return 0;
 }
 
-/* This is a function that uses the FIFO to accumulate sample of accelerometer and gyro data, average
- * them, scales them to gs and deg/s, respectively, and stores them in the struct for use later in the 
- * lsm_update function, where the biases are taken off of scaled raw readings. This results in a more 
- * accurate measurement in general and can remove errors due to imprecise or varying initial placement. 
- * Calibration of sensor data in this manner is good practice.
- */
-/* lsm9ds0_cal: calibrate and find biases to be stored in the struct */
+/* lsm9ds0_cal: zero out the gyro and the accel by finding biases */
 int lsm9ds0_cal(struct lsm9ds0 *lsm, int trials, int ms)
 {  
 	int status, i;
@@ -236,7 +230,13 @@ int lsm9ds0_cal(struct lsm9ds0 *lsm, int trials, int ms)
 	if (g_data == NULL) {
 		free(g_data);
 		return abs(errno) * -1;
-	}		
+	}
+	
+	/* reset biases */
+	for (i = 0; i < 3; ++i) {
+		lsm->g_bias[i] = 0;
+		lsm->g_bias[i] = 0;
+	}	
 	
 	/* collect and organize the data into our arrays */
 	for (i = 0; i < trials; ++i) {
