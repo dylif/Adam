@@ -277,6 +277,11 @@ int lsm9ds0_cal(struct lsm9ds0 *lsm, int trials, int ms)
 	lsm->g_bias[1] = gy_sum / trials;
 	lsm->g_bias[2] = gz_sum / trials;
 	
+	if (g_data != NULL)
+		free(g_data);
+	if (a_data != NULL)
+		free(a_data);
+	
 	return 0;
 	
 error_free_all:
