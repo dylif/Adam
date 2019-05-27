@@ -154,8 +154,6 @@ int main()
 	servos[SERVO_R_ANK] = &right_ankle;
 	servos[SERVO_L_ANK] = &left_ankle;
 	
-	float bias_tmp[3] = {0, 0, 0};
-	
 	/* open i2c file */
 	int fd = open(DEVICE_I2C, O_RDWR);
 	if (fd < 0) {
@@ -189,30 +187,29 @@ int main()
 		return status;
 	}
 	
-	/* calibrate gyro twice, take the lower as the gyro can get confused during first reads */
+	/* calibrate gyro by getting data 3 times */
 	printf("Calibrating gyro... Do not touch!!\n");
 	
-	if ((status = lsm9ds0_cal(&lsm)) < 0) {
-		fprintf(stderr, "Error in lsm_cal 1 %d: %s\n", status, strerror(status * -1));
-		return status;		
-	}
-	
-	for (i = 0; i < 3; ++i)
-		bias_tmp[i] = lsm.g_bias[i];
-		
-	/* state gyro biases */
-	printf("X Bias: %4.2f Y Bias: %4.2f Z Bias: %4.2f\n", lsm.g_bias[0], lsm.g_bias[1], lsm.g_bias[2]);	
-	
-	/* wait a second before attempting to calibrate again, this allows for the gyro to become stable */	
-	delay(1000);	
-	
-	if ((status = lsm9ds0_cal(&lsm)) < 0) {
+	if ((status = lsm9ds0_cal(&lsm, 3, 1000)) < 0) {
 		fprintf(stderr, "Error in lsm_cal 2 %d: %s\n", status, strerror(status * -1));
 		return status;		
 	}
 	
-	for (i = 0; i < 3; ++i)
-		lsm.g_bias[i] = (bias_tmp[i] > lsm.g_bias[i]) ? lsm.g_bias[i] : bias_tmp[i];
+	/* state gyro biases */
+	printf("X Bias: %4.2f Y Bias: %4.2f Z Bias: %4.2f\n", lsm.g_bias[0], lsm.g_bias[1], lsm.g_bias[2]);	
+	
+	/* read gyro */
+	for (i = 0; i < 10; ++i) {
+		if ((status = lsm9ds0_gyro_read(&lsm)) < 0) {
+			fprintf(stderr, "Error in gyro_read %d: %s\n", status, strerror(status * -1));
+			return status;
+		}
+		
+		lsm_update(&lsm);
+		printf("X: %4.2f Y: %4.2f Z: %4.2f\n", lsm.gx, lsm.gy, lsm.gz);
+			
+		delay(1000);		
+	}
 	
 	
 	/* center all servos */
@@ -231,22 +228,6 @@ int main()
 	if ((status = left_step(servos)) < 0) {
 		fprintf(stderr, "Error in left step %d: %s\n", status, strerror(status * -1));
 		return status;
-	}
-	
-	/* state gyro biases */
-	printf("Final:\nX Bias: %4.2f Y Bias: %4.2f Z Bias: %4.2f\n", lsm.g_bias[0], lsm.g_bias[1], lsm.g_bias[2]);
-	
-	/* read gyro */
-	for (i = 0; i < 10; ++i) {
-		if ((status = lsm9ds0_gyro_read(&lsm)) < 0) {
-			fprintf(stderr, "Error in gyro_read %d: %s\n", status, strerror(status * -1));
-			return status;
-		}
-		
-		lsm_update(&lsm);
-		printf("X: %4.2f Y: %4.2f Z: %4.2f\n", lsm.gx, lsm.gy, lsm.gz);
-			
-		delay(1000);		
 	}
 	
 	/* clean up */

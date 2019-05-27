@@ -296,7 +296,7 @@ int lsm9ds0_accel_read(struct lsm9ds0 *lsm);
 int lsm9ds0_mag_init(struct lsm9ds0 *lsm);
 int lsm9ds0_mag_read(struct lsm9ds0 *lsm);
 int lsm9ds0_temp_read(struct lsm9ds0 *lsm);
-int lsm9ds0_cal(struct lsm9ds0 *lsm);
+int lsm9ds0_cal(struct lsm9ds0 *lsm, int trials, int ms);
 void lsm_update(struct lsm9ds0 *lsm);
 float calc_gyro(struct lsm9ds0 *lsm, int16_t gyro);
 float calc_accel(struct lsm9ds0 *lsm, int16_t accel);

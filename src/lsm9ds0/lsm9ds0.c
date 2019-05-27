@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <stdint.h>
 #include <errno.h>
 #include <basic_i2c.h>
@@ -206,123 +207,85 @@ int lsm9ds0_mag_init(struct lsm9ds0 *lsm)
  * Calibration of sensor data in this manner is good practice.
  */
 /* lsm9ds0_cal: calibrate and find biases to be stored in the struct */
-int lsm9ds0_cal(struct lsm9ds0 *lsm)
+int lsm9ds0_cal(struct lsm9ds0 *lsm, int trials, int ms)
 {  
-	int status;
+	int status, i;
 	
-	/* declare and zero the arrays */
-	uint8_t data[6] = {0, 0, 0, 0, 0, 0};
-	int16_t gyro_bias[3] = {0, 0, 0};
-	int16_t accel_bias[3] = {0, 0, 0};
-	uint8_t temp;
-	uint8_t c;
+	float *g_data;
+	float *a_data;
 	
-	int samples; 
-	int i;
-
-	size_t data_sz = sizeof(data) / sizeof(data[0]);
-
-	if (lsm == NULL)
+	float gx_sum = 0;
+	float gy_sum = 0;
+	float gz_sum = 0;
+	float ax_sum = 0;
+	float ay_sum = 0;
+	float az_sum = 0;
+	
+	size_t len;
+	
+	if (trials <= 0 || lsm == NULL)
 		return -EINVAL;
-
-	/* get gyro bias */
-	if ((status = g_read8(lsm, CTRL_REG5_G, &c)) < 0)
-		return status;
-	
-	/* enable gyro FIFO and wait */
-	if ((status = g_write8(lsm, CTRL_REG5_G, c | 0x40)) < 0)
-		return status;
-	delay(20);
-	
-	/* enable gyro FIFO stream mode, set watermark at 32 samples and delay to collect samples */
-	if ((status = g_write8(lsm, FIFO_CTRL_REG_G, 0x20 | 0x1F)) < 0)
-		return status;
-	delay(1000);  								
-	
-	/* read number of stored samples */
-	if ((status = g_read8(lsm, FIFO_SRC_REG_G, &temp)) < 0)
-		return status;
-	samples = (temp & 0x1F); 
-
-	/* read the gyro data stored in the FIFO */
-	for(i = 0; i < samples; ++i) {            
-		if ((status = g_read(lsm, OUT_X_L_G, &data[0], data_sz)) < 0) 
-			return status;
-			
-		gyro_bias[0] += (((int16_t) data[1] << 8) | data[0]);
-		gyro_bias[1] += (((int16_t) data[3] << 8) | data[2]);
-		gyro_bias[2] += (((int16_t) data[5] << 8) | data[4]);
-	}  
-	
-	/* average the data */
-	gyro_bias[0] /= samples; 						
-	gyro_bias[1] /= samples; 
-	gyro_bias[2] /= samples; 
-	
-	/* Properly scale the data to get deg/s */
-	lsm->g_bias[0] = (float) gyro_bias[0] * lsm->g_res; 			 
-	lsm->g_bias[1] = (float) gyro_bias[1] * lsm->g_res;
-	lsm->g_bias[2] = (float) gyro_bias[2] * lsm->g_res;
-	
-	/* Disable gyro FIFO, delay, and enable gyro bypass mode */
-	if ((status = g_read8(lsm, CTRL_REG5_G, &c)) < 0)
-		return status;
-	if ((status = g_write8(lsm, CTRL_REG5_G, c & ~0x40)) < 0)
-		return status;   
-	delay(20);
-	if ((status = g_write8(lsm, FIFO_CTRL_REG_G, 0x00)) < 0)
-		return status;
-
-	/* get the accelerometer biases */
-	if ((status = am_read8(lsm, CTRL_REG0_AM, &c)) < 0)
-		return status;
 		
-	/* enable accelerometer FIFO and wait */
-	if ((status = am_write8(lsm,CTRL_REG0_AM, c | 0x40)) < 0)
-		return status;
-	delay(20); 
+	len = trials * 3;
 	
-	/* enable accelerometer FIFO stream mode, set watermark at 32 samples and delay to collect samples */
-	if ((status = am_write8(lsm,FIFO_CTRL_REG, 0x20 | 0x1F)) < 0)
-			return status;
-	delay(1000);
-	
-	/* read number of stored samples */
-	if ((status = am_read8(lsm, FIFO_SRC_REG, &temp)) < 0)
-		return status;
-	samples = (temp & 0x1F);
-	
-	/* read the accelerometer data stored in the FIFO
-	 * NOTE: assumes sensor facing up!
-	 */
-	for(i = 0; i < samples; ++i) {          	
-		if ((status = am_read(lsm, OUT_X_L_A, &data[0], data_sz)) < 0)
-			return status;
-		accel_bias[0] += (((int16_t) data[1] << 8) | data[0]);
-		accel_bias[1] += (((int16_t) data[3] << 8) | data[2]);
-		accel_bias[2] += (((int16_t) data[5] << 8) | data[4]) - (int16_t)(1.0f / lsm->a_res); 
-	}  
-	
-	/* average the data */
-	accel_bias[0] /= samples; 
-	accel_bias[1] /= samples; 
-	accel_bias[2] /= samples; 
-	
-	/* properly scale data to get gs */
-	lsm->a_bias[0] = (float) accel_bias[0] * lsm->a_res; 
-	lsm->a_bias[1] = (float) accel_bias[1] * lsm->a_res;
-	lsm->a_bias[2] = (float) accel_bias[2] * lsm->a_res;
-	
-	/* disable accelerometer FIFO, wait and enable accelerometer bypass mode */
-	if ((status = am_read8(lsm, CTRL_REG0_AM, &c)) < 0)
-		return status;
-	if ((status = am_write8(lsm, CTRL_REG0_AM, c & ~0x40)) < 0)
-		return status;
-	delay(20);
-	if ((status = am_write8(lsm, FIFO_CTRL_REG, 0x00)) < 0)
-		return status;
+	g_data = calloc(len, sizeof(*g_data));
+	if (g_data == NULL)
+		return abs(errno) * -1;
 		
+	a_data = calloc(len, sizeof(*a_data));
+	if (g_data == NULL) {
+		free(g_data);
+		return abs(errno) * -1;
+	}		
+	
+	/* collect and organize the data into our arrays */
+	for (i = 0; i < trials; ++i) {
+		delay(ms);
+		
+		if ((status = lsm9ds0_gyro_read(lsm)) < 0)
+			goto error_free_all;
+		if ((status = lsm9ds0_accel_read(lsm)) < 0)
+			goto error_free_all;
+		
+		lsm_update(lsm);
+		
+		g_data[(i * 3) + 0] = lsm->gx;
+		g_data[(i * 3) + 1] = lsm->gy;
+		g_data[(i * 3) + 2] = lsm->gz;
+		
+		a_data[(i * 3) + 0] = lsm->ax;
+		a_data[(i * 3) + 1] = lsm->ay;
+		a_data[(i * 3) + 2] = lsm->az;
+	}
+	
+	/* average the data	*/
+	for (i = 0; i < trials; ++i) {
+		gx_sum += g_data[(i * 3) + 0];
+		gy_sum += g_data[(i * 3) + 1];
+		gz_sum += g_data[(i * 3) + 2];
+		
+		ax_sum += a_data[(i * 3) + 0];
+		ay_sum += a_data[(i * 3) + 1];
+		az_sum += a_data[(i * 3) + 2];
+	}
+	
+	lsm->g_bias[0] = gx_sum / trials;
+	lsm->g_bias[1] = gy_sum / trials;
+	lsm->g_bias[2] = gz_sum / trials;
+	
+	lsm->g_bias[0] = gx_sum / trials;
+	lsm->g_bias[1] = gy_sum / trials;
+	lsm->g_bias[2] = gz_sum / trials;
+	
 	return 0;
+	
+error_free_all:
+	if (g_data != NULL)
+		free(g_data);
+	if (a_data != NULL)
+		free(a_data);
+		
+	return status;
 }
 
 /* lsm9ds0_gyro_read: read raw data from the gyro */
