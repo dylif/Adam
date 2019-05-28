@@ -14,6 +14,8 @@
 #define LSM_AM_ADDR 0x1d
 #define PCA_HERTZ 50
 
+#define LSM_GRAVITY (9.80665F) 
+
 #define SERVO_MIN 700
 #define SERVO_MAX 2500
 #define SERVO_NEU 1600
@@ -31,7 +33,7 @@
 
 static struct lsm9ds0_settings settings =
 {
-	G_SCALE_2000DPS,
+	G_SCALE_245DPS,
 	A_SCALE_2G,
  	M_SCALE_2GS,
 	G_ODR_95_BW_125, 
@@ -187,30 +189,35 @@ int main()
 		return status;
 	}
 	
-	/* calibrate gyro by getting data 3 times */
-	printf("Calibrating gyro... Do not touch!!\n");
+	/* calibrate by getting data 3 times */
+	printf("Calibrating LSM... Do not touch!!\n");
 	
 	if ((status = lsm9ds0_cal(&lsm, 3, 1000)) < 0) {
-		fprintf(stderr, "Error in lsm_cal 2 %d: %s\n", status, strerror(status * -1));
+		fprintf(stderr, "Error in lsm_cal %d: %s\n", status, strerror(status * -1));
 		return status;		
 	}
 	
-	/* state gyro biases */
-	printf("X Bias: %4.2f Y Bias: %4.2f Z Bias: %4.2f\n", lsm.g_bias[0], lsm.g_bias[1], lsm.g_bias[2]);	
+	/* state biases */
+	printf("Gyro: X Bias: %6.2f Y Bias: %6.2f Z Bias: %6.2f\n", lsm.g_bias[0], lsm.g_bias[1], lsm.g_bias[2]);	
+	printf("Accel: X Bias: %6.2f Y Bias: %6.2f Z Bias: %6.2f\n", lsm.a_bias[0], lsm.a_bias[1], lsm.a_bias[2]);	
 	
-	/* read gyro */
+	/* read lsm */
 	for (i = 0; i < 10; ++i) {
 		if ((status = lsm9ds0_gyro_read(&lsm)) < 0) {
 			fprintf(stderr, "Error in gyro_read %d: %s\n", status, strerror(status * -1));
 			return status;
 		}
+		if ((status = lsm9ds0_accel_read(&lsm)) < 0) {
+			fprintf(stderr, "Error in accel_read %d: %s\n", status, strerror(status * -1));
+			return status;
+		}
 		
 		lsm_update(&lsm);
-		printf("X: %4.2f Y: %4.2f Z: %4.2f\n", lsm.gx, lsm.gy, lsm.gz);
+		printf("Gyro: X: %6.2f Y: %6.2f Z: %6.2f\n", lsm.gx, lsm.gy, lsm.gz);
+		printf("Accel: X: %6.2f Y: %6.2f Z: %6.2f\n", lsm.ax * LSM_GRAVITY, lsm.ay * LSM_GRAVITY, lsm.az * LSM_GRAVITY);
 			
-		delay(1000);		
+		delay(2000);		
 	}
-	
 	
 	/* center all servos */
 	if ((status = center_all(servos)) < 0) {

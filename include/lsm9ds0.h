@@ -288,7 +288,7 @@ struct lsm9ds0_settings
 };
 
 /* declare functions */
-uint16_t lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings, int fd, unsigned int g_addr, unsigned int am_addr);
+int lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings, int fd, unsigned int g_addr, unsigned int am_addr);
 int lsm9ds0_gyro_init(struct lsm9ds0 *lsm);
 int lsm9ds0_gyro_read(struct lsm9ds0 *lsm);
 int lsm9ds0_accel_init(struct lsm9ds0 *lsm);

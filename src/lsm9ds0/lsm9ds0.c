@@ -25,12 +25,9 @@ static struct lsm9ds0_settings settings_def =
 };
 
 /* lsm9ds0_new: setup a new lsm9ds0 struct and initalize gyro, accel, and mag functions */
-uint16_t lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings, int fd, unsigned int g_addr, unsigned int am_addr)
+int lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings, int fd, unsigned int g_addr, unsigned int am_addr)
 {
 	int status;
-	
-	uint8_t g_test;
-	uint8_t am_test;
 	
 	if (lsm == NULL)
 		return -EINVAL;
@@ -60,12 +57,6 @@ uint16_t lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings, int
 	calc_g_res(lsm);
 	calc_m_res(lsm);
 	calc_a_res(lsm);
-	
-	/* read the "who am i" registers */
-	if ((status = g_read8(lsm, WHO_AM_I_G, &g_test)) < 0)
-		return status;
-	if ((status = am_read8(lsm, WHO_AM_I_AM, &am_test)) < 0)
-		return status;
 	
 	/* gyro init */
 	
@@ -109,8 +100,7 @@ uint16_t lsm9ds0_new(struct lsm9ds0 *lsm, struct lsm9ds0_settings *settings, int
 	if ((status = set_m_scl(lsm, lsm->m_scl)) < 0)
 		return status;
 	
-	/* return the WHO_AM_I registers we read */
-	return (am_test << 8) | g_test;
+	return 0;
 }
 
 /* lsm9ds0_gyro_init: initalize the gyro and set interrupts, etc. */
@@ -219,7 +209,8 @@ int lsm9ds0_cal(struct lsm9ds0 *lsm, int trials, int ms)
 	
 	if (trials <= 0 || lsm == NULL)
 		return -EINVAL;
-		
+	
+	/* lenght of our arrays for 3 dimensions */	
 	len = trials * 3;
 	
 	g_data = calloc(len, sizeof(*g_data));
@@ -273,10 +264,11 @@ int lsm9ds0_cal(struct lsm9ds0 *lsm, int trials, int ms)
 	lsm->g_bias[1] = gy_sum / trials;
 	lsm->g_bias[2] = gz_sum / trials;
 	
-	lsm->g_bias[0] = gx_sum / trials;
-	lsm->g_bias[1] = gy_sum / trials;
-	lsm->g_bias[2] = gz_sum / trials;
+	lsm->a_bias[0] = ax_sum / trials;
+	lsm->a_bias[1] = ay_sum / trials;
+	lsm->a_bias[2] = az_sum / trials;
 	
+	/* clean up */
 	if (g_data != NULL)
 		free(g_data);
 	if (a_data != NULL)
