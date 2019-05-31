@@ -42,6 +42,15 @@ int pca9685_servo_new(struct pca9685_servo *servo, struct pca9685 *pca, unsigned
 	return pin;
 }
 
+/* pca9685_servo_read_us: read a microsecond value from a servo struct */
+int pca9685_servo_read_us(struct pca9685_servo *servo)
+{
+	if (servo == NULL)
+		return -EINVAL;
+	
+	return servo->us;
+}
+
 /* pca9685_servo_write_us: write a microsecond value to a servo struct. returns value written to servo */
 int pca9685_servo_write_us(struct pca9685_servo *servo, unsigned int us)
 {
@@ -59,10 +68,33 @@ int pca9685_servo_write_us(struct pca9685_servo *servo, unsigned int us)
 	return servo->us;
 }
 
+/* pca9685_servo_read_deg: read a microsecond value from a servo struct in degrees */
+int pca9685_servo_read_deg(struct pca9685_servo *servo)
+{
+	if (servo == NULL)
+		return -EINVAL;
+	
+	return pca9685_servo_us_to_deg(servo, servo->us);
+}
+
+/* pca9685_servo_write_deg: write a degree value converted to a microsecond value to a servo struct. 
+ * returns value written to servo
+ */
+int pca9685_servo_write_deg(struct pca9685_servo *servo, unsigned int deg)
+{
+	return pca9685_servo_write_us(servo, pca9685_servo_deg_to_us(servo, deg));
+}
+
 /* pca9685_servo_deg_to_us: convert degree value to a mircosecond value depending on the servo's min and max range */
 int pca9685_servo_deg_to_us(struct pca9685_servo *servo, unsigned int deg)
 {
 	return map(deg, 0, 180, servo->us_min, servo->us_max);
+}
+
+/* pca9685_servo_deg_to_us: convert degree value to a mircosecond value depending on the servo's min and max range */
+int pca9685_servo_us_to_deg(struct pca9685_servo *servo, unsigned int us)
+{
+	return map(us, servo->us_min, servo->us_max, 0, 180);
 }
 
 /* static functions */
