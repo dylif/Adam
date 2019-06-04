@@ -58,7 +58,7 @@ int pca9685_servo_write_us(struct pca9685_servo *servo, unsigned int us)
 	
 	/* sanity check */
 	if (servo == NULL || servo->pca == NULL || us < servo->us_min || us > servo->us_max)
-		return (servo->us = -EINVAL); /* ensure that us does get set */
+		return (servo->us = -EINVAL); /* ensure that us member gets set */
 	
 	if ((status = pca9685_pwm_write(servo->pca, servo->pin, 0, us_to_tick(us, servo->pca->freq))) < 0)
 		return (servo->us = status); /* ditto */
@@ -82,18 +82,32 @@ int pca9685_servo_read_deg(struct pca9685_servo *servo)
  */
 int pca9685_servo_write_deg(struct pca9685_servo *servo, unsigned int deg)
 {
-	return pca9685_servo_write_us(servo, pca9685_servo_deg_to_us(servo, deg));
+	int status;
+	
+	if (servo == NULL)
+		return -EINVAL;
+	
+	status = pca9685_servo_write_us(servo, pca9685_servo_deg_to_us(servo, deg));
+	return (status < 0) ? status : deg;
 }
 
 /* pca9685_servo_deg_to_us: convert degree value to a mircosecond value depending on the servo's min and max range */
 int pca9685_servo_deg_to_us(struct pca9685_servo *servo, unsigned int deg)
 {
+	#ifdef SERVO_NEU
+		if (deg == 90)
+			return SERVO_NEU;
+	#endif
 	return map(deg, 0, 180, servo->us_min, servo->us_max);
 }
 
 /* pca9685_servo_deg_to_us: convert degree value to a mircosecond value depending on the servo's min and max range */
 int pca9685_servo_us_to_deg(struct pca9685_servo *servo, unsigned int us)
 {
+	#ifdef SERVO_NEU
+		if (us == SERVO_NEU)
+			return 90;
+	#endif
 	return map(us, servo->us_min, servo->us_max, 0, 180);
 }
 
