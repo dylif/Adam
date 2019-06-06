@@ -77,7 +77,7 @@ int main()
 		return status;
 	}
 	
-	printf("deg_to_us: %d us_to_deg: %d", pca9685_servo_deg_to_us(servos[SERVO_R_HIP], 90), pca9685_servo_us_to_deg(servos[SERVO_R_HIP], SERVO_NEU));
+	printf("deg_to_us: %d us_to_deg: %d\n", pca9685_servo_deg_to_us(servos[SERVO_R_HIP], 90), pca9685_servo_us_to_deg(servos[SERVO_R_HIP], SERVO_NEU));
 
 	
 	/* clean up */

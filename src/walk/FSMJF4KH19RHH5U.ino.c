@@ -1,24 +1,3 @@
-Servo RHip;
-Servo RThigh;
-Servo RKnee;
-Servo RAnkle;
-
-Servo LHip;
-Servo LThigh;
-Servo LKnee;
-Servo LAnkle;
-
-int RHipCenter = 90;  
-int RThighCenter = 70;
-int RKneeCenter = 164;
-int RAnkleCenter = 90;
-
-int LHipCenter = 90;
-int LThighCenter = 110;
-int LKneeCenter = 26;//lthigh
-int LAnkleCenter = 104;
-
-
 int walking = 0;
 
 int d = 100;
