@@ -122,10 +122,10 @@ int main()
 		
 		lsm_update(&lsm);
 		
-		/* leaning to far right */
+		/* leaning too far right */
 		if (lsm.gy > Y_THRESHOLD)
 			lean_left(servos);
-		/* leaning to far left */
+		/* leaning too far left */
 		if (lsm.gy < -Y_THRESHOLD)
 			lean_right(servos);
 	}	
